@@ -170,12 +170,12 @@ mutual
 
   jsConstAlt : Int -> String -> NamedConstAlt -> Core String
   jsConstAlt i target (MkNConstAlt (I c) exp) =
-    pure $ "if (" ++ target ++ " === " ++ (show c) ++ "){ return " ++ !(jsExp i exp) ++ ";}"
+    pure $ "if (Number(" ++ target ++ ") === " ++ (show c) ++ "){ return " ++ !(jsExp i exp) ++ ";}"
   jsConstAlt i target (MkNConstAlt c exp) =
     pure $ "if (" ++ target ++ " === " ++ (jsConstant c) ++ "){ return " ++ !(jsExp i exp) ++ ";}"
 
   jsConAlt : Int -> String -> NamedConAlt -> Core String
-  jsConAlt i target (MkNConAlt n tag args exp) =
+  jsConAlt i target (MkNConAlt n (Just tag) args exp) =
     pure $ "if (" ++ target ++ "[0] === " ++ (show tag) ++ "){ return " ++ bindArgs args !(jsExp i exp) ++ ";}"
       where
         bindArgs : List Name -> String -> String
