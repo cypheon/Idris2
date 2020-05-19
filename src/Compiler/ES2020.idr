@@ -47,7 +47,13 @@ jsString s = "'" ++ (concatMap okchar (unpack s)) ++ "'"
     okchar : Char -> String
     okchar c = if (c >= ' ') && (c /= '\\') && (c /= '"') && (c /= '\'') && (c <= '~')
                   then cast c
-                  else "\\u{" ++ asHex (cast {to=Int} c) ++ "}"
+                  else case c of
+                            '\0' => "\\0"
+                            '\'' => "\\'"
+                            '"' => "\\\""
+                            '\r' => "\\r"
+                            '\n' => "\\n"
+                            other => "\\u{" ++ asHex (cast {to=Int} c) ++ "}"
 binOp : String -> String -> String -> String
 binOp o lhs rhs = "(" ++ lhs ++ " " ++ o ++ " " ++ rhs ++ ")"
 
