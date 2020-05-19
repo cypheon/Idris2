@@ -28,10 +28,14 @@ jsIdent s = concatMap okchar (unpack s)
                   then cast c
                   else "$" ++ asHex (cast {to=Int} c)
 
+keywordSafe : String -> String
+keywordSafe "var" = "var_"
+keywordSafe s = s
+
 export
 jsName : Name -> String
 jsName (NS ns n) = showSep "_" ns ++ "_" ++ jsName n
-jsName (UN n) = jsIdent n
+jsName (UN n) = keywordSafe $ jsIdent n
 jsName (MN n i) = jsIdent n ++ "_" ++ show i
 jsName (PV n d) = "pat__" ++ jsName n
 jsName (DN _ n) = jsName n
