@@ -92,9 +92,11 @@ install-support: support
 	mkdir -p ${PREFIX}/idris2-${IDRIS2_VERSION}/support/chez
 	mkdir -p ${PREFIX}/idris2-${IDRIS2_VERSION}/support/racket
 	mkdir -p ${PREFIX}/idris2-${IDRIS2_VERSION}/support/gambit
+	mkdir -p ${PREFIX}/idris2-${IDRIS2_VERSION}/support/es2020
 	install support/chez/* ${PREFIX}/idris2-${IDRIS2_VERSION}/support/chez
 	install support/racket/* ${PREFIX}/idris2-${IDRIS2_VERSION}/support/racket
 	install support/gambit/* ${PREFIX}/idris2-${IDRIS2_VERSION}/support/gambit
+	install support/es2020/* ${PREFIX}/idris2-${IDRIS2_VERSION}/support/es2020
 	@${MAKE} -C support/c install
 
 install-libs: libs
