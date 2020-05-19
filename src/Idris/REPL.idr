@@ -3,6 +3,7 @@ module Idris.REPL
 import Compiler.Scheme.Chez
 import Compiler.Scheme.Racket
 import Compiler.Scheme.Gambit
+import Compiler.ES2020
 import Compiler.Common
 
 import Core.AutoSearch
@@ -249,6 +250,7 @@ findCG
               Chez => pure codegenChez
               Racket => pure codegenRacket
               Gambit => pure codegenGambit
+              ES2020 => pure codegenES2020
 
 anyAt : (FC -> Bool) -> FC -> a -> Bool
 anyAt p loc y = p loc
