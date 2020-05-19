@@ -11,7 +11,9 @@ import Core.Options
 import Core.TT
 import Utils.Hex
 
+import Data.Maybe
 import Data.NameMap
+import Data.Strings
 import Data.Vect
 import System
 import System.Info
@@ -121,6 +123,12 @@ jsOp (Cast ty ty2) [x] = "__jsPrim_idris_crash('invalid cast: ' + " ++ jsString 
 jsOp BelieveMe [_,_,x] = x
 jsOp (Crash) [_, msg] = "__jsPrim_idris_crash(" ++ jsString msg ++ ")"
 
+allIndices : List a -> List Nat
+allIndices xs = go 0 xs where
+  go : Nat -> List a -> List Nat
+  go i [] = []
+  go i (x::xs) = i::go (i+1) xs
+
 mutual
   jsExp : Int -> NamedCExp -> Core String
   jsExp i (NmLocal fc n) = pure $ jsName n
@@ -170,8 +178,6 @@ mutual
   jsConAlt i target (MkNConAlt n tag args exp) =
     pure $ "if (" ++ target ++ "[0] === " ++ (show tag) ++ "){ return " ++ bindArgs args !(jsExp i exp) ++ ";}"
       where
-        allIndices : List a -> List Nat
-        allIndices xs = findIndices (\_ => True) xs
         bindArgs : List Name -> String -> String
         bindArgs [] body = body
         bindArgs args body = "( ((" ++ (showSep ", " (map jsName args)) ++ ") " ++
@@ -179,14 +185,14 @@ mutual
                              "(" ++ showSep ", " (map (\i => target ++ "[" ++ (show (i+1)) ++ "]") (allIndices args)) ++ ") )"
 
   jsArgs : Int -> Vect n NamedCExp -> Core (Vect n String)
-  jsArgs _i [] = pure []
+  jsArgs i [] = pure []
   jsArgs i (arg :: args) = pure $ !(jsExp i arg) :: !(jsArgs i args)
 
   jsConstant : Constant -> String
   jsConstant (I i) = toBigInt $ show i
   jsConstant (BI i) = toBigInt $ show i
   jsConstant (Str s) = jsString s
-  jsConstant (Ch c) = jsString $ singleton c
+  jsConstant (Ch c) = jsString $ Data.Strings.singleton c
   jsConstant (Db f) = show f
   jsConstant WorldVal = "__jsPrim_IdrisWorld"
   -- otherwise: IntType, StringType, WorldType...
@@ -209,17 +215,8 @@ jsDef n (MkNmError exp) = pure ""
 jsDef n (MkNmForeign _ _ _) = pure ""
 jsDef n (MkNmCon _ _ _) = pure ""
 
-getJS : Defs -> (Name, FC, NamedDef) -> Core String
-getJS defs (n, _fc, nd) =
-  jsDef n nd
-  {-
-    = debugTrace (show (n, _fc, nd)) $ case !(lookupCtxtExact n (gamma defs)) of
-           Nothing => throw (InternalError ("Compiling undefined name " ++ show n))
-           Just d => case namedcompexpr d of
-                          Nothing =>
-                             throw (InternalError ("No compiled definition for " ++ show n))
-                          Just d => jsDef n d
-                          -}
+getJS : (Name, FC, NamedDef) -> Core String
+getJS (n, fc, d) = jsDef n d
 
 findNode : IO String
 findNode =
@@ -229,10 +226,9 @@ findNode =
 compileJs : Ref Ctxt Defs -> ClosedTerm -> Core String
 compileJs c tm
     = do cdata <- getCompileData Cases tm
-         let ns = namedDefs cdata
+         let ndefs = namedDefs cdata
          let ctm = forget (mainExpr cdata)
-         defs <- get Ctxt
-         compdefs <- traverse (getJS defs) ns
+         compdefs <- traverse getJS ndefs
 
          main <- jsExp 0 ctm
          support <- readDataFile "es2020/support.js"
@@ -254,8 +250,7 @@ compileExpr c execDir tm outfile
 
 executeExpr : Ref Ctxt Defs -> (exexDir : String) -> ClosedTerm -> Core ()
 executeExpr c execDir tm
-    = do tmp <- coreLift $ tmpName
-         let outn = tmp ++ ".js"
+    = do let outn = "_tmp_es2020" ++ ".js"
          js <- compileJs c tm
          Right () <- coreLift $ writeFile outn js
             | Left err => throw (FileErr outn err)
