@@ -204,6 +204,8 @@ mutual
   jsPrim i (NS _ (UN "prim__os")) args = pure $ jsString os
   jsPrim i (NS _ (UN "prim__open")) args = pure $ "__jsPrim_open(" ++ (showSep ", " !(traverse (jsExp i) args)) ++ ")"
   jsPrim i (NS _ (UN "prim__close")) args = pure $ "__jsPrim_close(" ++ (showSep ", " !(traverse (jsExp i) args)) ++ ")"
+  jsPrim i (NS _ (UN "prim__schemeCall")) args = pure $ "__jsPrim_schemeCall(" ++ (showSep ", " !(traverse (jsExp i) args)) ++ ")"
+  jsPrim i (NS _ (primName)) args = pure $ "__jsPrim_unknown_"++jsName primName++"(" ++ (showSep ", " !(traverse (jsExp i) args)) ++ ")"
   jsPrim i x args = throw (InternalError $ "prim not implemented: " ++ (show x))
 
 jsDef : Name -> NamedDef -> Core String
