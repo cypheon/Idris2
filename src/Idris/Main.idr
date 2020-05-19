@@ -11,7 +11,7 @@ import Core.Unify
 
 import Idris.CommandLine
 import Idris.Desugar
-import Idris.IDEMode.REPL
+--import Idris.IDEMode.REPL
 import Idris.ModTree
 import Idris.Package
 import Idris.Parser
@@ -175,7 +175,7 @@ stMain opts
                      if not ideSocket
                       then do
                        setOutput (IDEMode 0 stdin stdout)
-                       replIDE {c} {u} {m}
+                       --replIDE {c} {u} {m}
                      else do
                        throw (InternalError "Not implemeted yet")
 --                        let (host, port) = ideSocketModeHostPort opts
