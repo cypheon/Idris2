@@ -33,24 +33,6 @@ exports.idris2_putStr = (str, _world) => {
   process.stdout.write(str);
 };
 
-exports.idris2_getStr = (_world) => {
-  const buf = Buffer.alloc(1);
-  let result = "";
-  while (true) {
-    const bytesRead = fs.readSync(0, buf);
-    if (bytesRead > 0) {
-      const s = buf.toString('utf-8');
-      result += s;
-      if (s == '\n') {
-        break;
-      }
-    } else {
-      break;
-    }
-  };
-  return result;
-};
-
 // System
 exports.idris2_getArgs = () => {
   return js2idris(process.argv.slice(1));
@@ -99,26 +81,59 @@ exports.idris2_nextDirEntry = (dir, _world) => {
   throw new Error("not implemented");
 };
 
-function FilePtr(fd) {
+function FilePtr(fd, name) {
   this.fd = fd;
+  this.buffer = Buffer.alloc(0);
+  this.name = name;
+  this.eof = false;
   return this;
 }
 
+FilePtr.prototype.readLine = function() {
+  const LF = 0x0a;
+  const readBuf = Buffer.alloc(1);
+  let lineEnd = this.buffer.indexOf(LF);
+  while (lineEnd === -1) {
+    const bytesRead = fs.readSync(this.fd, readBuf);
+    if (bytesRead === 0) {
+      this.eof = true;
+      break;
+    }
+    this.buffer = Buffer.concat([this.buffer, readBuf.slice(0, bytesRead)]);
+    lineEnd = this.buffer.indexOf(LF);
+  }
+  const line = this.buffer.slice(0, lineEnd + 1);
+  this.buffer = this.buffer.slice(lineEnd + 1);
+  return line.toString('utf-8');
+}
+
+const stdinFilePtr = new FilePtr(0, "<stdin>");
+const stdoutFilePtr = new FilePtr(1, "<stdout>");
+const stderrFilePtr = new FilePtr(2, "<stderr>");
+
 // System.File
 exports.idris2_stdin = (_world) => {
-  return new FilePtr(0);
+  return stdinFilePtr;
 };
 exports.idris2_stdout = (_world) => {
-  return new FilePtr(1);
+  return stdoutFilePtr;
 };
 exports.idris2_stderr = (_world) => {
-  return new FilePtr(2);
+  return stderrFilePtr;
 };
+
+exports.idris2_readLine = (filePtr, _world) => {
+  return filePtr.readLine();
+};
+exports.idris2_getStr = (_world) => {
+  return stdinFilePtr.readLine();
+};
+
 exports.idris2_openFile = (name, mode, _world) => {
   try {
     const fd = fs.openSync(name, mode);
     __errno = null;
-    return new FilePtr(fd);
+    return new FilePtr(fd, name);
   } catch (e) {
     __errno = e;
     return undefined;
@@ -136,7 +151,11 @@ exports.idris2_closeFile = (filePtr, _world) => {
   return undefined;
 };
 exports.idris2_eof = (filePtr, _world) => {
-  return js2idris(0);
+  if (filePtr.eof === true) {
+    return js2idris(1);
+  } else {
+    return js2idris(0);
+  }
 };
 
 const bufferFuncsLE = {
