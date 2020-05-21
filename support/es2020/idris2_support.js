@@ -5,6 +5,9 @@ function js2idris(x) {
   if (typeof x === 'number') {
     return BigInt(x);
   }
+  if (typeof x === 'bigint') {
+    return x;
+  }
   if (typeof x === 'string') {
     return x;
   }
