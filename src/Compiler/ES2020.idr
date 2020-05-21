@@ -222,6 +222,9 @@ mutual
   jsPrim i (NS _ (UN "prim__newArray")) args = defaultPrim i "__jsPrim_newArray" args
   jsPrim i (NS _ (UN "prim__arrayGet")) args = defaultPrim i "__jsPrim_arrayGet" args
   jsPrim i (NS _ (UN "prim__arraySet")) args = defaultPrim i "__jsPrim_arraySet" args
+  jsPrim i (NS _ (UN "prim__newIORef")) args = defaultPrim i "__jsPrim_newIORef" args
+  jsPrim i (NS _ (UN "prim__readIORef")) args = defaultPrim i "__jsPrim_readIORef" args
+  jsPrim i (NS _ (UN "prim__writeIORef")) args = defaultPrim i "__jsPrim_writeIORef" args
   jsPrim i (NS _ (primName)) args = pure $ "__jsPrim_unknown_"++jsName primName++"(" ++ (showSep ", " !(traverse (jsExp i) args)) ++ ")"
   jsPrim i x args = throw (InternalError $ "prim not implemented: " ++ (show x))
 

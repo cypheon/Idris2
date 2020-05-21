@@ -39,6 +39,23 @@ function __jsPrim_arraySet(_erased, array, idx, val, _world) {
   array[idx] = val;
 }
 
+function __jsPrim_IORef_impl(value) {
+  this.value = value;
+  return this;
+}
+
+function __jsPrim_newIORef(_erased, value, _world) {
+  return new __jsPrim_IORef_impl(value);
+}
+
+function __jsPrim_readIORef(_erased, ref, _world) {
+  return ref.value;
+}
+
+function __jsPrim_writeIORef(_erased, ref, value, _world) {
+  ref.value = value;
+}
+
 function __jsPrim_reverseStr(s) {
   let r = "";
   for (let i = 1; i <= s.length; ++i) {
