@@ -31,11 +31,11 @@ function __jsPrim_newArray() {
   return new Array();
 }
 
-function __jsPrim_arrayGet(array, idx) {
+function __jsPrim_arrayGet(_erased, array, idx, _world) {
   return array[idx];
 }
 
-function __jsPrim_arraySet(array, idx, val) {
+function __jsPrim_arraySet(_erased, array, idx, val, _world) {
   array[idx] = val;
 }
 
