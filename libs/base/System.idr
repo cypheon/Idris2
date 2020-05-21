@@ -91,6 +91,7 @@ unsetEnv var
 
 %foreign libc "system"
          "scheme:blodwen-system"
+         "es2020:idris2_system,idris2_support"
 prim_system : String -> PrimIO Int
 
 export
@@ -106,6 +107,7 @@ time : IO Integer
 time = pure $ cast !(primIO prim_time)
 
 %foreign libc "exit"
+         "es2020:idris2_exit,idris2_support"
 prim_exit : Int -> PrimIO ()
 
 ||| Programs can either terminate successfully, or end in a caught

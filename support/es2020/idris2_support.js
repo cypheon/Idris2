@@ -140,6 +140,10 @@ exports.idris2_getStr = (_world) => {
   return stdinFilePtr.readLine();
 };
 
+exports.idris2_writeLine = (filePtr, line, _world) => {
+  fs.writeSync(filePtr.fd, line, undefined, 'utf-8');
+};
+
 exports.idris2_openFile = (name, mode, _world) => {
   try {
     const fd = fs.openSync(name, mode);
@@ -169,24 +173,59 @@ exports.idris2_eof = (filePtr, _world) => {
   }
 };
 
+
+exports.idris2_chmod = (filename, mode, _world) => {
+  try {
+    fs.chmodSync(filename, Number(mode));
+    __errno = null;
+    return js2idris(0);
+  } catch (e) {
+    __errno = e;
+    return js2idris(1);
+  }
+};
+
+const child_process = require('child_process');
+
+exports.idris2_system = (cmdline, _world) => {
+  try {
+    const proc = child_process.spawnSync(cmdline, undefined, {shell: true});
+    return js2idris(proc.status);
+  } catch (e) {
+    return js2idris(1);
+  }
+};
+exports.idris2_exit = (code, _world) => {
+  process.exit(Number(code));
+};
+
+// Data.Buffer
+
 const bufferFuncsLE = {
   readInt64: (buf, offset) => buf.readBigInt64LE(offset),
   readInt32: (buf, offset) => buf.readInt32LE(offset),
   readDouble: (buf, offset) => buf.readDoubleLE(offset),
 
-  writeInt64: (buf, offset, val) => buf.writeBigInt64LE(offset, val),
-  writeInt32: (buf, offset, val) => buf.writeInt32LE(offset, val),
-  writeDouble: (buf, offset, val) => buf.writeDoubleLE(offset, val),
+  writeInt64: (buf, offset, val) => buf.writeBigInt64LE(val, offset),
+  writeInt32: (buf, offset, val) => buf.writeInt32LE(val, offset),
+  writeDouble: (buf, offset, val) => buf.writeDoubleLE(val, offset),
 };
 const bufferFuncs = bufferFuncsLE;
 
-// Data.Buffer
 exports.idris2_bufferFromFile = (filename, _world) => {
   try {
     return fs.readFileSync(filename);
   } catch (e) {
   }
   return undefined;
+};
+exports.idris2_writeBufferToFile = (filename, buf, maxBytes, _world) => {
+  try {
+    fs.writeFileSync(filename, buf.slice(0, Number(maxBytes)));
+    return js2idris(0);
+  } catch (e) {
+    return js2idris(1);
+  }
 };
 exports.idris2_isBuffer = (buf) => {
   if (buf !== undefined) {
@@ -214,6 +253,26 @@ exports.idris2_bufferGetByte = (buf, offset, _world) => {
 };
 exports.idris2_bufferGetString = (buf, offset, length, _world) => {
   return buf.slice(Number(offset), Number(offset + length)).toString('utf-8');
+};
+
+exports.idris2_bufferSetInt = (buf, offset, value, _world) => {
+  bufferFuncs.writeInt64(buf, Number(offset), value);
+};
+exports.idris2_bufferSetInt32 = (buf, offset, value, _world) => {
+  bufferFuncs.writeInt32(buf, Number(offset), Number(value));
+};
+exports.idris2_bufferSetDouble = (buf, offset, value, _world) => {
+  bufferFuncs.writeDouble(buf, Number(offset), value);
+};
+exports.idris2_bufferSetByte = (buf, offset, value, _world) => {
+  buf.writeUInt8(Number(value), Number(offset));
+};
+exports.idris2_bufferSetString = (buf, offset, value, _world) => {
+  buf.write(value, Number(offset), buf.length - Number(offset), 'utf-8');
+};
+
+exports.idris2_stringLength = (str) => {
+  return js2idris(Buffer.from(str, 'utf-8').length);
 };
 
 exports.idris2_bufferCopyData = (srcBuf, srcOffset, length, destBuf, destOffset, _world) => {

@@ -80,7 +80,7 @@ prim__stdout : FilePtr
 prim__stderr : FilePtr
 
 %foreign libc "chmod"
-         "es2020:chmod,idris2_support"
+         "es2020:idris2_chmod,idris2_support"
 prim__chmod : String -> Int -> PrimIO Int
 
 modeStr : Mode -> String
