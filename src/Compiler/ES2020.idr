@@ -11,6 +11,7 @@ import Core.Options
 import Core.TT
 import Utils.Hex
 
+import Data.List
 import Data.Maybe
 import Data.NameMap
 import Data.Strings
@@ -34,7 +35,7 @@ keywordSafe s = s
 
 export
 jsName : Name -> String
-jsName (NS ns n) = showSep "_" ns ++ "_" ++ jsName n
+jsName (NS ns n) = showSep "_" (reverse ns) ++ "_" ++ jsName n
 jsName (UN n) = keywordSafe $ jsIdent n
 jsName (MN n i) = jsIdent n ++ "_" ++ show i
 jsName (PV n d) = "pat__" ++ jsName n
@@ -176,7 +177,7 @@ mutual
 
   jsConstructor : Name -> Maybe Int -> List String -> String
   jsConstructor _ (Just i) args = "[" ++ (show i) ++ ", " ++ (showSep ", " args) ++ "]"
-  jsConstructor n Nothing args = "[" ++ (jsName n) ++ ", " ++ (showSep ", " args) ++ "]"
+  jsConstructor n Nothing args = "['" ++ (jsName n) ++ "', " ++ (showSep ", " args) ++ "]"
 
   jsConstAlt : Int -> String -> NamedConstAlt -> Core String
   jsConstAlt i target (MkNConstAlt (I c) exp) =
@@ -208,6 +209,9 @@ mutual
   -- otherwise: IntType, StringType, WorldType...
   jsConstant ty = "__jsPrim_idris_crash('code tried to evaluate a type constant: ' + " ++ show ty ++ ")"
 
+  defaultPrim : Int -> String -> List NamedCExp -> Core String
+  defaultPrim i n args = pure $ n ++ "(" ++ (showSep ", " !(traverse (jsExp i) args)) ++ ")"
+
   jsPrim : Int -> Name -> List NamedCExp -> Core String
   jsPrim i (NS _ (UN "prim__putStr")) args = pure $ "__jsPrim_putStr(" ++ (showSep ", " !(traverse (jsExp i) args)) ++ ")"
   jsPrim i (NS _ (UN "prim__codegen")) [] = pure $ jsString "es2020"
@@ -215,6 +219,9 @@ mutual
   jsPrim i (NS _ (UN "prim__open")) args = pure $ "__jsPrim_open(" ++ (showSep ", " !(traverse (jsExp i) args)) ++ ")"
   jsPrim i (NS _ (UN "prim__close")) args = pure $ "__jsPrim_close(" ++ (showSep ", " !(traverse (jsExp i) args)) ++ ")"
   jsPrim i (NS _ (UN "prim__schemeCall")) args = pure $ "__jsPrim_schemeCall(" ++ (showSep ", " !(traverse (jsExp i) args)) ++ ")"
+  jsPrim i (NS _ (UN "prim__newArray")) args = defaultPrim i "__jsPrim_newArray" args
+  jsPrim i (NS _ (UN "prim__arrayGet")) args = defaultPrim i "__jsPrim_arrayGet" args
+  jsPrim i (NS _ (UN "prim__arraySet")) args = defaultPrim i "__jsPrim_arraySet" args
   jsPrim i (NS _ (primName)) args = pure $ "__jsPrim_unknown_"++jsName primName++"(" ++ (showSep ", " !(traverse (jsExp i) args)) ++ ")"
   jsPrim i x args = throw (InternalError $ "prim not implemented: " ++ (show x))
 

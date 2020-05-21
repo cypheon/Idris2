@@ -12,11 +12,11 @@ const __jsPrim_integer_of_string = (s) => {
 const __jsPrim_int_bound_63 = BigInt(2) ** BigInt(63);
 
 function __jsPrim_open(path, mode, binary) {
-  return require("fs").openSync(path, mode);
+  return BigInt(require("fs").openSync(path, mode));
 }
 
 function __jsPrim_close(fd) {
-  return require("fs").closeSync(fd);
+  return require("fs").closeSync(Number(fd));
 }
 
 function __jsPrim_idris_crash(msg) {
@@ -25,6 +25,18 @@ function __jsPrim_idris_crash(msg) {
 
 function __jsPrim_putStr(s, __extra) {
   process.stdout.write(s);
+}
+
+function __jsPrim_newArray() {
+  return new Array();
+}
+
+function __jsPrim_arrayGet(array, idx) {
+  return array[idx];
+}
+
+function __jsPrim_arraySet(array, idx, val) {
+  array[idx] = val;
 }
 
 function __jsPrim_reverseStr(s) {

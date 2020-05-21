@@ -26,6 +26,7 @@ usleep sec = primIO (prim_usleep sec)
 -- This one is going to vary for different back ends. Probably needs a
 -- better convention. Will revisit...
 %foreign "scheme:blodwen-args"
+         "node.js:idris2_getArgs,idris2_support"
 prim__getArgs : PrimIO (List String)
 
 export
