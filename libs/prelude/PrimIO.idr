@@ -103,7 +103,7 @@ prim__getString : Ptr String -> String
 %foreign "C:idris2_getStr,libidris2_support"
 prim__getStr : PrimIO String
 %foreign "C:idris2_putStr,libidris2_support"
-         "node.js:idris2_putStr,idris2_support"
+         "es2020:idris2_putStr,idris2_support"
 prim__putStr : String -> PrimIO ()
 
 ||| Output a string to stdout without a trailing newline.

@@ -250,7 +250,7 @@ getNodeJsForeign : List String -> Maybe (String, String)
 getNodeJsForeign [] = Nothing
 getNodeJsForeign (x::xs) =
   let (cc, def) = break (== ':') x in
-      if cc == "node.js" then Just $ map strTail (break (== ',') (strTail def))
+      if cc == "es2020" then Just $ map strTail (break (== ',') (strTail def))
                          else getNodeJsForeign xs
 
 jsFgnDef : {auto c : Ref Ctxt Defs} ->
