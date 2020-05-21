@@ -225,3 +225,28 @@ exports.idris2_isNull = (ptr) => {
 exports.idris2_getString = (ptr) => {
   return ptr;
 };
+
+const id = (x) => x;
+
+function idris2js_List(x) {
+  const result = [];
+  let cursor = x;
+  while (Number(cursor[0]) !== 0) {
+    result.push(cursor[2]);
+    cursor = cursor[3];
+  }
+  return result;
+}
+
+function __schemeCall__string_append(value) {
+  const parts = idris2js_List(value);
+  return "".concat(...parts);
+}
+exports.idris2_schemeCall = function (returnTypes, functionName) {
+  const arrayArguments = [].slice.call(arguments);
+  const args = arrayArguments.slice(2);
+  if (functionName === 'string-append') {
+    return __schemeCall__string_append(args[0]);
+  }
+  throw new Error("schemeCall not implemented: " + JSON.stringify(arguments));
+};

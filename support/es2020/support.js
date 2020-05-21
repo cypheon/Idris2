@@ -63,3 +63,5 @@ function __jsPrim_reverseStr(s) {
   }
   return r;
 }
+
+const __jsPrim_schemeCall = require('idris2_support').idris2_schemeCall;
