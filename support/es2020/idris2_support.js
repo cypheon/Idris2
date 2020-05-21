@@ -110,6 +110,17 @@ exports.idris2_closeFile = (filePtr, _world) => {
   return undefined;
 };
 
+const bufferFuncsLE = {
+  readInt64: (buf, offset) => buf.readBigInt64LE(offset),
+  readInt32: (buf, offset) => buf.readInt32LE(offset),
+  readDouble: (buf, offset) => buf.readDoubleLE(offset),
+
+  writeInt64: (buf, offset, val) => buf.writeBigInt64LE(offset, val),
+  writeInt32: (buf, offset, val) => buf.writeInt32LE(offset, val),
+  writeDouble: (buf, offset, val) => buf.writeDoubleLE(offset, val),
+};
+const bufferFuncs = bufferFuncsLE;
+
 // Data.Buffer
 exports.idris2_bufferFromFile = (filename, _world) => {
   try {
@@ -127,6 +138,32 @@ exports.idris2_isBuffer = (buf) => {
 };
 exports.idris2_bufferSize = (buf) => {
   return js2idris(buf.length);
+};
+
+exports.idris2_bufferGetInt = (buf, offset, _world) => {
+  return js2idris(bufferFuncs.readInt64(buf, Number(offset)));
+};
+exports.idris2_bufferGetInt32 = (buf, offset, _world) => {
+  return js2idris(bufferFuncs.readInt32(buf, Number(offset)));
+};
+exports.idris2_bufferGetDouble = (buf, offset, _world) => {
+  // careful: do not convert double to BigInt!
+  return bufferFuncs.readDouble(buf, Number(offset));
+};
+exports.idris2_bufferGetByte = (buf, offset, _world) => {
+  return js2idris(buf.readUInt8(Number(offset)));
+};
+exports.idris2_bufferGetString = (buf, offset, length, _world) => {
+  return buf.slice(Number(offset), Number(offset + length)).toString('utf-8');
+};
+
+exports.idris2_bufferCopyData = (srcBuf, srcOffset, length, destBuf, destOffset, _world) => {
+  srcBuf.copy(destBuf, Number(destOffset), Number(srcOffset), Number(srcOffset + length));
+  return undefined;
+};
+
+exports.idris2_newBuffer = (size, _world) => {
+  return Buffer.alloc(Number(size));
 };
 
 
