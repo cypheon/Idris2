@@ -10,6 +10,7 @@ support : String -> String
 support fn = "C:" ++ fn ++ ", libidris2_support"
 
 %foreign support "idris2_fileErrno"
+         "es2020:idris2_fileErrno,idris2_support"
 prim_fileErrno : PrimIO Int
 
 returnError : IO (Either FileError a)
@@ -27,24 +28,31 @@ ok : a -> IO (Either FileError a)
 ok x = pure (Right x)
 
 %foreign support "idris2_currentDirectory"
+         "es2020:idris2_currentDirectory,idris2_support"
 prim_currentDir : PrimIO (Ptr String)
 
 %foreign support "idris2_changeDir"
+         "es2020:idris2_changeDir,idris2_support"
 prim_changeDir : String -> PrimIO Int
 
 %foreign support "idris2_createDir"
+         "es2020:idris2_createDir,idris2_support"
 prim_createDir : String -> PrimIO Int
 
 %foreign support "idris2_dirOpen"
+         "es2020:idris2_dirOpen,idris2_support"
 prim_openDir : String -> PrimIO DirPtr
 
 %foreign support "idris2_dirClose"
+         "es2020:idris2_dirClose,idris2_support"
 prim_closeDir : DirPtr -> PrimIO ()
 
 %foreign support "idris2_rmDir"
+         "es2020:idris2_rmDir,idris2_support"
 prim_rmDir : String -> PrimIO ()
 
 %foreign support "idris2_nextDirEntry"
+         "es2020:idris2_nextDirEntry,idris2_support"
 prim_dirEntry : DirPtr -> PrimIO (Ptr String)
 
 export

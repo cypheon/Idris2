@@ -11,8 +11,10 @@ libc : String -> String
 libc fn = "C:" ++ fn ++ ", libc 6"
 
 %foreign support "idris2_sleep"
+         "es2020:idris2_sleep,idris2_support"
 prim_sleep : Int -> PrimIO ()
 %foreign support "idris2_usleep"
+         "es2020:idris2_usleep,idris2_support"
 prim_usleep : Int -> PrimIO ()
 
 export
@@ -34,12 +36,16 @@ getArgs : IO (List String)
 getArgs = primIO prim__getArgs
 
 %foreign libc "getenv"
+         "es2020:idris2_getEnv,idris2_support"
 prim_getEnv : String -> PrimIO (Ptr String)
 %foreign support "idris2_getEnvPair"
+         "es2020:idris2_getEnvPair,idris2_support"
 prim_getEnvPair : Int -> PrimIO (Ptr String)
 %foreign libc "setenv"
+         "es2020:idris2_setEnv,idris2_support"
 prim_setEnv : String -> String -> Int -> PrimIO Int
 %foreign libc "setenv"
+         "es2020:idris2_unsetEnv,idris2_support"
 prim_unsetEnv : String -> PrimIO Int
 
 export

@@ -42,8 +42,10 @@ io_bind (MkIO fn) k
                       res w')
 
 %foreign "C:putchar,libc 6"
+         "es2020:putchar,idris2_support"
 prim__putChar : Char -> (1 x : %World) -> IORes ()
 %foreign "C:getchar,libc 6"
+         "es2020:getchar,idris2_support"
 %extern prim__getChar : (1 x : %World) -> IORes Char
 
 -- A pointer representing a given parameter type
@@ -86,6 +88,7 @@ cCall : (ret : Type) -> String -> FArgList -> IO ret
 cCall ret fn args = primIO (prim__cCall ret fn args)
 
 %foreign "C:idris2_isNull, libidris2_support"
+         "es2020:idris2_isNull,idris2_support"
 export
 prim__nullAnyPtr : AnyPtr -> Int
 
@@ -97,10 +100,12 @@ prim__nullPtr : Ptr t -> Int -- can't pass 'type' to a foreign function
 prim__nullPtr p = prim__nullAnyPtr (prim__forgetPtr p)
 
 %foreign "C:idris2_getString, libidris2_support"
+         "es2020:idris2_getString,idris2_support"
 export
 prim__getString : Ptr String -> String
 
 %foreign "C:idris2_getStr,libidris2_support"
+         "es2020:idris2_getStr,idris2_support"
 prim__getStr : PrimIO String
 %foreign "C:idris2_putStr,libidris2_support"
          "es2020:idris2_putStr,idris2_support"
@@ -145,6 +150,7 @@ prim_fork : (1 prog : PrimIO ()) -> PrimIO ThreadID
 prim_fork act w = prim__schemeCall ThreadID "blodwen-thread" [act] w
 
 %foreign "C:idris2_readString, libidris2_support"
+         "es2020:idris2_readString,idris2_support"
 export
 prim__getErrno : Int
 

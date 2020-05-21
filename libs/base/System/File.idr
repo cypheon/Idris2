@@ -17,50 +17,70 @@ libc : String -> String
 libc fn = "C:" ++ fn ++ ", libc 6"
 
 %foreign support "idris2_openFile"
+         "es2020:idris2_openFile,idris2_support"
 prim__open : String -> String -> Int -> PrimIO FilePtr
 %foreign support "idris2_closeFile"
+         "es2020:idris2_closeFile,idris2_support"
 prim__close : FilePtr -> PrimIO ()
 
 %foreign support "idris2_fileError"
+         "es2020:idris2_fileError,idris2_support"
 prim_error : FilePtr -> PrimIO Int
 %foreign support "idris2_fileErrno"
+         "es2020:idris2_fileErrno,idris2_support"
 prim_fileErrno : PrimIO Int
 
 %foreign support "idris2_readLine"
+         "es2020:idris2_readLine,idris2_support"
 prim__readLine : FilePtr -> PrimIO (Ptr String)
 %foreign support "idris2_readChars"
+         "es2020:idris2_readChars,idris2_support"
 prim__readChars : Int -> FilePtr -> PrimIO (Ptr String)
 %foreign support "fgetc"
+         "es2020:fgetc,idris2_support"
 prim__readChar : FilePtr -> PrimIO Char
 %foreign support "idris2_writeLine"
+         "es2020:idris2_writeLine,idris2_support"
 prim__writeLine : FilePtr -> String -> PrimIO Int
 %foreign support "idris2_eof"
+         "es2020:idris2_eof,idris2_support"
 prim__eof : FilePtr -> PrimIO Int
 %foreign "C:fflush,libc 6"
+         "es2020:idris2_fflush,idris2_support"
 prim__flush : FilePtr -> PrimIO Int
 
 %foreign support "idris2_fileRemove"
+         "es2020:idris2_fileRemove,idris2_support"
 prim__fileRemove : String -> PrimIO Int
 %foreign support "idris2_fileSize"
+         "es2020:idris2_fileSize,idris2_support"
 prim__fileSize : FilePtr -> PrimIO Int
 %foreign support "idris2_fileSize"
+         "es2020:idris2_fileSize,idris2_support"
 prim__fPoll : FilePtr -> PrimIO Int
 
 %foreign support "idris2_fileAccessTime"
+         "es2020:idris2_fileAccessTime,idris2_support"
 prim__fileAccessTime : FilePtr -> PrimIO Int
 %foreign support "idris2_fileModifiedTime"
+         "es2020:idris2_fileModifiedTime,idris2_support"
 prim__fileModifiedTime : FilePtr -> PrimIO Int
 %foreign support "idris2_fileStatusTime"
+         "es2020:idris2_fileStatusTime,idris2_support"
 prim__fileStatusTime : FilePtr -> PrimIO Int
 
 %foreign support "idris2_stdin"
+         "es2020:idris2_stdin,idris2_support"
 prim__stdin : FilePtr
 %foreign support "idris2_stdout"
+         "es2020:idris2_stdout,idris2_support"
 prim__stdout : FilePtr
 %foreign support "idris2_stderr"
+         "es2020:idris2_stderr,idris2_support"
 prim__stderr : FilePtr
 
 %foreign libc "chmod"
+         "es2020:chmod,idris2_support"
 prim__chmod : String -> Int -> PrimIO Int
 
 modeStr : Mode -> String
