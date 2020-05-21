@@ -7,8 +7,9 @@ import Idris.IDEMode.Commands
 
 import Text.Parser
 import Parser.Lexer
-import Parser.Support
+import Parser.Source
 import Text.Lexer
+import Utils.Either
 import Utils.String
 
 import Data.List
@@ -20,7 +21,7 @@ import Data.Strings
 symbols : List String
 symbols = ["(", ":", ")"]
 
-ideTokens : TokenMap Token
+ideTokens : TokenMap SourceToken
 ideTokens =
     map (\x => (exact x, Symbol)) symbols ++
     [(digits, \x => Literal (cast x)),
@@ -28,7 +29,7 @@ ideTokens =
      (identAllowDashes, \x => NSIdent [x]),
      (space, Comment)]
 
-idelex : String -> Either (Int, Int, String) (List (TokenData Token))
+idelex : String -> Either (Int, Int, String) (List (TokenData SourceToken))
 idelex str
     = case lex ideTokens str of
            -- Add the EndInput token so that we'll have a line and column
@@ -37,7 +38,7 @@ idelex str
                                       [MkToken l c EndInput])
            (_, fail) => Left fail
     where
-      notComment : TokenData Token -> Bool
+      notComment : TokenData SourceToken -> Bool
       notComment t = case tok t of
                           Comment _ => False
                           _ => True
@@ -60,18 +61,12 @@ sexp
          pure (SExpList xs)
 
 ideParser : {e : _} ->
-            String -> Grammar (TokenData Token) e ty -> Either ParseError ty
+            String -> Grammar (TokenData SourceToken) e ty -> Either ParseError ty
 ideParser str p
-    = case idelex str of
-           Left err => Left $ LexFail err
-           Right toks =>
-              case parse p toks of
-                   Left (Error err []) =>
-                          Left $ ParseFail err Nothing []
-                   Left (Error err (t :: ts)) =>
-                          Left $ ParseFail err (Just (line t, col t))
-                                               (map tok (t :: ts))
-                   Right (val, _) => Right val
+    = do toks   <- mapError LexFail $ idelex str
+         parsed <- mapError mapParseError $ parse p toks
+         Right (fst parsed)
+
 
 export
 parseSExp : String -> Either ParseError SExp

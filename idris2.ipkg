@@ -82,6 +82,8 @@ modules =
     Idris.Version,
 
     Parser.Lexer,
+    Parser.Rule,
+    Parser.Source,
     Parser.Support,
     Parser.Unlit,
 
@@ -142,10 +144,9 @@ modules =
     Yaffle.Main,
     Yaffle.REPL
 
--- opts = "--codegen racket"
 depends = contrib, network
 
 sourcedir = "src"
 
 main = Idris.Main
-executable = idris2sh
+executable = idris2
