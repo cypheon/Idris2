@@ -66,7 +66,14 @@ exports.idris2_currentDirectory = (_world) => {
   return js2idris(process.cwd());
 };
 exports.idris2_createDir = (dir, _world) => {
-  throw new Error("not implemented");
+  try {
+    fs.mkdirSync(dir);
+    __errno = null;
+    return js2idris(0);
+  } catch (e) {
+    __errno = e;
+    return js2idris(1);
+  }
 };
 exports.idris2_dirOpen = (dir, _world) => {
   throw new Error("not implemented");
@@ -120,6 +127,10 @@ exports.idris2_stdout = (_world) => {
 };
 exports.idris2_stderr = (_world) => {
   return stderrFilePtr;
+};
+exports.idris2_fileModifiedTime = (filePtr, _world) => {
+  const stat = fs.fstatSync(filePtr.fd, {bigint: true});
+  return stat.mtimeMs / BigInt(1000);
 };
 
 exports.idris2_readLine = (filePtr, _world) => {
