@@ -19,7 +19,6 @@ function js2idris(x) {
 }
 
 function js2idris_array(a) {
-  console.log("convert: ", a);
   if (a.length === 0) {
     return [0];
   } else {
@@ -31,7 +30,25 @@ const fs = require('fs');
 
 // IO
 exports.idris2_putStr = (str, _world) => {
-  console.log(str);
+  process.stdout.write(str);
+};
+
+exports.idris2_getStr = (_world) => {
+  const buf = Buffer.alloc(1);
+  let result = "";
+  while (true) {
+    const bytesRead = fs.readSync(0, buf);
+    if (bytesRead > 0) {
+      const s = buf.toString('utf-8');
+      result += s;
+      if (s == '\n') {
+        break;
+      }
+    } else {
+      break;
+    }
+  };
+  return result;
 };
 
 // System
@@ -88,6 +105,15 @@ function FilePtr(fd) {
 }
 
 // System.File
+exports.idris2_stdin = (_world) => {
+  return new FilePtr(0);
+};
+exports.idris2_stdout = (_world) => {
+  return new FilePtr(1);
+};
+exports.idris2_stderr = (_world) => {
+  return new FilePtr(2);
+};
 exports.idris2_openFile = (name, mode, _world) => {
   try {
     const fd = fs.openSync(name, mode);
@@ -108,6 +134,9 @@ exports.idris2_closeFile = (filePtr, _world) => {
     __errno = e;
   }
   return undefined;
+};
+exports.idris2_eof = (filePtr, _world) => {
+  return js2idris(0);
 };
 
 const bufferFuncsLE = {
