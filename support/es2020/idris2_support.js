@@ -107,6 +107,26 @@ exports.idris2_closeFile = (filePtr, _world) => {
   return undefined;
 };
 
+// Data.Buffer
+exports.idris2_bufferFromFile = (filename, _world) => {
+  try {
+    return fs.readFileSync(filename);
+  } catch (e) {
+  }
+  return undefined;
+};
+exports.idris2_isBuffer = (buf) => {
+  if (buf !== undefined) {
+    return js2idris(0);
+  } else {
+    return js2idris(1);
+  }
+};
+exports.idris2_bufferSize = (buf) => {
+  return js2idris(buf.length);
+};
+
+
 // AnyPtr
 exports.idris2_isNull = (ptr) => {
   if (ptr === null || ptr === undefined) {

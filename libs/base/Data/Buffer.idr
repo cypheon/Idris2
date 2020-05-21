@@ -6,6 +6,7 @@ export
 data Buffer : Type where [external]
 
 %foreign  "scheme:blodwen-buffer-size"
+          "es2020:idris2_bufferSize,idris2_support"
 prim__bufferSize : Buffer -> Int
 
 export
@@ -13,6 +14,7 @@ rawSize : Buffer -> IO Int
 rawSize buf = pure (prim__bufferSize buf)
 
 %foreign "scheme:blodwen-new-buffer"
+         "es2020:idris2_newBuffer,idris2_support"
 prim__newBuffer : Int -> PrimIO Buffer
 
 export
@@ -30,6 +32,7 @@ freeBuffer : Buffer -> IO ()
 freeBuffer buf = pure ()
 
 %foreign "scheme:blodwen-buffer-setbyte"
+         "es2020:idris2_bufferSetByte,idris2_support"
 prim__setByte : Buffer -> Int -> Int -> PrimIO ()
 
 -- Assumes val is in the range 0-255
@@ -39,6 +42,7 @@ setByte buf loc val
     = primIO (prim__setByte buf loc val)
 
 %foreign "scheme:blodwen-buffer-getbyte"
+         "es2020:idris2_bufferGetByte,idris2_support"
 prim__getByte : Buffer -> Int -> PrimIO Int
 
 export
@@ -47,6 +51,7 @@ getByte buf loc
     = primIO (prim__getByte buf loc)
 
 %foreign "scheme:blodwen-buffer-setint32"
+         "es2020:idris2_bufferSetInt32,idris2_support"
 prim__setInt32 : Buffer -> Int -> Int -> PrimIO ()
 
 export
@@ -55,6 +60,7 @@ setInt32 buf loc val
     = primIO (prim__setInt32 buf loc val)
 
 %foreign "scheme:blodwen-buffer-getint32"
+         "es2020:idris2_bufferGetInt32,idris2_support"
 prim__getInt32 : Buffer -> Int -> PrimIO Int
 
 export
@@ -63,6 +69,7 @@ getInt32 buf loc
     = primIO (prim__getInt32 buf loc)
 
 %foreign "scheme:blodwen-buffer-setint"
+         "es2020:idris2_bufferSetInt,idris2_support"
 prim__setInt : Buffer -> Int -> Int -> PrimIO ()
 
 export
@@ -71,6 +78,7 @@ setInt buf loc val
     = primIO (prim__setInt buf loc val)
 
 %foreign "scheme:blodwen-buffer-getint"
+         "es2020:idris2_bufferGetInt,idris2_support"
 prim__getInt : Buffer -> Int -> PrimIO Int
 
 export
@@ -79,6 +87,7 @@ getInt buf loc
     = primIO (prim__getInt buf loc)
 
 %foreign "scheme:blodwen-buffer-setdouble"
+         "es2020:idris2_bufferSetDouble,idris2_support"
 prim__setDouble : Buffer -> Int -> Double -> PrimIO ()
 
 export
@@ -87,6 +96,7 @@ setDouble buf loc val
     = primIO (prim__setDouble buf loc val)
 
 %foreign "scheme:blodwen-buffer-getdouble"
+         "es2020:idris2_bufferGetDouble,idris2_support"
 prim__getDouble : Buffer -> Int -> PrimIO Double
 
 export
@@ -97,9 +107,11 @@ getDouble buf loc
 -- Get the length of a string in bytes, rather than characters
 export
 %foreign "C:strlen,libc 6"
+         "es2020:idris2_stringLength,idris2_support"
 stringByteLength : String -> Int
 
 %foreign "scheme:blodwen-buffer-setstring"
+         "es2020:idris2_bufferSetString,idris2_support"
 prim__setString : Buffer -> Int -> String -> PrimIO ()
 
 export
@@ -108,6 +120,7 @@ setString buf loc val
     = primIO (prim__setString buf loc val)
 
 %foreign "scheme:blodwen-buffer-getstring"
+         "es2020:idris2_bufferGetString,idris2_support"
 prim__getString : Buffer -> Int -> Int -> PrimIO String
 
 export
@@ -128,6 +141,7 @@ bufferData buf
              unpackTo (val :: acc) (loc - 1)
 
 %foreign "scheme:blodwen-buffer-copydata"
+         "es2020:idris2_bufferCopyData,idris2_support"
 prim__copyData : Buffer -> Int -> Int -> Buffer -> Int -> PrimIO ()
 
 export
@@ -149,9 +163,11 @@ copyData src start len dest loc
 --             else pure (Left FileReadError)
 
 %foreign "scheme:blodwen-read-bytevec"
+         "es2020:idris2_bufferFromFile,idris2_support"
 prim__readBufferFromFile : String -> PrimIO Buffer
 
 %foreign "scheme:blodwen-isbytevec"
+         "es2020:idris2_isBuffer,idris2_support"
 prim__isBuffer : Buffer -> Int
 
 -- Create a new buffer by reading all the contents from the given file
@@ -166,6 +182,7 @@ createBufferFromFile fn
                     pure (Right buf)
 
 %foreign "scheme:blodwen-write-bytevec"
+         "es2020:idris2_writeBufferToFile,idris2_support"
 prim__writeBuffer : String -> Buffer -> Int -> PrimIO Int
 
 export
