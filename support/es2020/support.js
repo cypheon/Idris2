@@ -27,12 +27,23 @@ function __jsPrim_putStr(s, __extra) {
   process.stdout.write(s);
 }
 
-function __jsPrim_newArray() {
-  return new Array();
+function __jsPrim_newArray(_erased, size, elem, _world) {
+  const newArray = new Array();
+  for (let i = 0; i < size; ++i) {
+    newArray[i] = elem;
+  }
+  return newArray;
 }
 
 function __jsPrim_arrayGet(_erased, array, idx, _world) {
-  return array[idx];
+  // TODO: remove this later, but during development of the codegen, this may be useful
+  if (Number(idx) >= array.length) {
+    console.error("array ot ouf bounds access");
+  }
+
+  const rval = array[idx];
+
+  return rval;
 }
 
 function __jsPrim_arraySet(_erased, array, idx, val, _world) {
