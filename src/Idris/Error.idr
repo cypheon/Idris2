@@ -83,7 +83,7 @@ perror (NotCovering fc n (NonCoveringCall ns))
                            [fn] => " " ++ show fn
                            _ => "s: " ++ showSep ", " (map show ns)
 perror (NotTotal fc n r)
-    = pure $ !(prettyName n) ++ " is not total"
+    = pure $ !(prettyName n) ++ " is not total:\n\t" ++ show r
 perror (LinearUsed fc count n)
     = pure $ "There are " ++ show count ++ " uses of linear name " ++ sugarName n
 perror (LinearMisuse fc n exp ctx)
@@ -259,9 +259,24 @@ perror (InRHS fc n err)
              " at " ++ show fc ++ ":\n" ++ !(perror err)
 
 export
+pwarning : {auto c : Ref Ctxt Defs} ->
+           {auto s : Ref Syn SyntaxInfo} ->
+           Warning -> Core String
+pwarning (UnreachableClause fc env tm)
+    = pure $ "Warning: unreachable clause: " ++ !(pshow env tm)
+
+export
 display : {auto c : Ref Ctxt Defs} ->
           {auto s : Ref Syn SyntaxInfo} ->
           Error -> Core String
 display err
     = pure $ maybe "" (\f => show f ++ ":") (getErrorLoc err) ++
                    !(perror err)
+
+export
+displayWarning : {auto c : Ref Ctxt Defs} ->
+                 {auto s : Ref Syn SyntaxInfo} ->
+                 Warning -> Core String
+displayWarning w
+    = pure $ maybe "" (\f => show f ++ ":") (getWarningLoc w) ++
+                   !(pwarning w)

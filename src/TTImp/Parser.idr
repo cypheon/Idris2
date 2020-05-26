@@ -72,7 +72,7 @@ visOption
   <|> do keyword "private"
          pure Private
 
-visibility : EmptyRule Visibility
+visibility : SourceEmptyRule Visibility
 visibility
     = visOption
   <|> pure Private
@@ -115,7 +115,7 @@ visOpt
          pure (Right opt)
 
 getVisibility : Maybe Visibility -> List (Either Visibility FnOpt) ->
-                EmptyRule Visibility
+               SourceEmptyRule Visibility
 getVisibility Nothing [] = pure Private
 getVisibility (Just vis) [] = pure vis
 getVisibility Nothing (Left x :: xs) = getVisibility (Just x) xs
@@ -204,13 +204,13 @@ mutual
            symbol ")"
            pure e
 
-  multiplicity : EmptyRule (Maybe Integer)
+  multiplicity : SourceEmptyRule (Maybe Integer)
   multiplicity
       = do c <- intLit
            pure (Just c)
     <|> pure Nothing
 
-  getMult : Maybe Integer -> EmptyRule RigCount
+  getMult : Maybe Integer -> SourceEmptyRule RigCount
   getMult (Just 0) = pure erased
   getMult (Just 1) = pure linear
   getMult Nothing = pure top
@@ -508,7 +508,7 @@ mutual
            let fc = MkFC fname start end
            pure (!(getFn lhs), ImpossibleClause fc lhs)
     where
-      getFn : RawImp -> EmptyRule Name
+      getFn : RawImp -> SourceEmptyRule Name
       getFn (IVar _ n) = pure n
       getFn (IApp _ f a) = getFn f
       getFn (IImplicitApp _ f _ a) = getFn f
@@ -582,7 +582,7 @@ recordParam fname indents
   <|> do symbol "{"
          commit
          start <- location
-         info <- the (EmptyRule (PiInfo RawImp))
+         info <- the (SourceEmptyRule (PiInfo RawImp))
                  (pure  AutoImplicit <* keyword "auto"
               <|>(do
                   keyword "default"
@@ -642,7 +642,7 @@ namespaceDecl : Rule (List String)
 namespaceDecl
     = do keyword "namespace"
          commit
-         ns <- nsIdent
+         ns <- namespacedIdent
          pure ns
 
 directive : FileName -> IndentInfo -> Rule ImpDecl

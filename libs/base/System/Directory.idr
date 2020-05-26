@@ -39,17 +39,17 @@ prim_changeDir : String -> PrimIO Int
          "es2020:idris2_createDir,idris2_support"
 prim_createDir : String -> PrimIO Int
 
-%foreign support "idris2_dirOpen"
+%foreign support "idris2_openDir"
          "es2020:idris2_dirOpen,idris2_support"
 prim_openDir : String -> PrimIO DirPtr
 
-%foreign support "idris2_dirClose"
+%foreign support "idris2_closeDir"
          "es2020:idris2_dirClose,idris2_support"
 prim_closeDir : DirPtr -> PrimIO ()
 
-%foreign support "idris2_rmDir"
+%foreign support "idris2_removeDir"
          "es2020:idris2_rmDir,idris2_support"
-prim_rmDir : String -> PrimIO ()
+prim_removeDir : String -> PrimIO ()
 
 %foreign support "idris2_nextDirEntry"
          "es2020:idris2_nextDirEntry,idris2_support"
@@ -82,20 +82,20 @@ currentDir
             else pure (Just (prim__getString res))
 
 export
-dirOpen : String -> IO (Either FileError Directory)
-dirOpen d
+openDir : String -> IO (Either FileError Directory)
+openDir d
     = do res <- primIO (prim_openDir d)
          if prim__nullAnyPtr res /= 0
             then returnError
             else ok (MkDir res)
 
 export
-dirClose : Directory -> IO ()
-dirClose (MkDir d) = primIO (prim_closeDir d)
+closeDir : Directory -> IO ()
+closeDir (MkDir d) = primIO (prim_closeDir d)
 
 export
-rmDir : String -> IO ()
-rmDir dirName = primIO (prim_rmDir dirName)
+removeDir : String -> IO ()
+removeDir dirName = primIO (prim_removeDir dirName)
 
 export
 dirEntry : Directory -> IO (Either FileError String)

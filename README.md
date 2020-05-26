@@ -1,9 +1,11 @@
 Idris 2
 =======
 
-[![Build Status](https://travis-ci.org/idris-lang/Idris2.svg?branch=master)](https://travis-ci.org/idris-lang/Idris2)
 [![Documentation Status](https://readthedocs.org/projects/idris2/badge/?version=latest)](https://idris2.readthedocs.io/en/latest/?badge=latest)
-      
+[![](https://github.com/idris-lang/Idris2/workflows/Windows/badge.svg)](https://github.com/idris-lang/Idris2/actions?query=workflow%3A"Windows")
+[![](https://github.com/idris-lang/Idris2/workflows/Ubuntu/badge.svg)](https://github.com/idris-lang/Idris2/actions?query=workflow%3A"Ubuntu")
+[![](https://github.com/idris-lang/Idris2/workflows/Ubuntu%20Racket/badge.svg)](https://github.com/idris-lang/Idris2/actions?query=workflow%3A"Ubuntu+Racket")
+[![](https://github.com/idris-lang/Idris2/workflows/macOS/badge.svg)](https://github.com/idris-lang/Idris2/actions?query=workflow%3A"macOS")
 
 [Idris 2](https://idris-lang.org/) is a purely functional programming language
 with first class types.
@@ -16,8 +18,8 @@ you have Chez Scheme installed, with the executable name `chez`, type:
 
 You may need to change `chez` to be the local name of your Chez Scheme. This
 is often one of `scheme`, `chezscheme` or `chezscheme9.5` (depending on the
-version). On a modern desktop machine, this process should take no more than
-2 or 3 minutes.
+version). On a modern desktop machine, this process (including tests)
+should take less than 5 minutes.
 
 Idris 2 is mostly backwards compatible with Idris 1, with some minor
 exceptions. The most notable user visible differences, which might cause Idris

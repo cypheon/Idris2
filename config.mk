@@ -2,8 +2,7 @@
 
 PREFIX ?= $(HOME)/.idris2
 
-# clang compiles the output much faster than gcc!
-CC := clang
+CC ?= clang
 
 ##################################################################
 
@@ -36,6 +35,8 @@ else
         SHLIB_SUFFIX := .so
         CFLAGS += -fPIC
 endif
+
+export OS
 
 ifeq ($(OS),bsd)
 	MAKE := gmake

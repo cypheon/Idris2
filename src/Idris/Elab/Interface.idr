@@ -21,6 +21,7 @@ import TTImp.Utils
 
 import Data.ANameMap
 import Data.List
+import Data.Maybe
 
 -- TODO: Check all the parts of the body are legal
 -- TODO: Deal with default superclass implementations
@@ -225,14 +226,27 @@ mkCon loc (NS ns (UN n))
 mkCon loc n
    = DN (show n ++ " at " ++ show loc) (UN ("__mk" ++ show n))
 
-updateIfaceSyn : {auto s : Ref Syn SyntaxInfo} ->
+updateIfaceSyn : {auto c : Ref Ctxt Defs} ->
+                 {auto s : Ref Syn SyntaxInfo} ->
                  Name -> Name -> List Name -> List RawImp ->
-                 List (Name, RigCount, (Bool, RawImp)) -> List (Name, List ImpClause) ->
+                 List (Name, RigCount, List FnOpt, (Bool, RawImp)) -> List (Name, List ImpClause) ->
                  Core ()
 updateIfaceSyn iname cn ps cs ms ds
     = do syn <- get Syn
-         let info = MkIFaceInfo cn ps cs ms ds
+         ms' <- traverse totMeth ms
+         let info = MkIFaceInfo cn ps cs ms' ds
          put Syn (record { ifaces $= addName iname info } syn)
+ where
+    findSetTotal : List FnOpt -> Maybe TotalReq
+    findSetTotal [] = Nothing
+    findSetTotal (Totality t :: _) = Just t
+    findSetTotal (_ :: xs) = findSetTotal xs
+
+    totMeth : (Name, RigCount, List FnOpt, (Bool, RawImp)) ->
+              Core (Name, RigCount, TotalReq, (Bool, RawImp))
+    totMeth (n, c, opts, t)
+        = do let treq = fromMaybe !getDefaultTotalityOption (findSetTotal opts)
+             pure (n, c, treq, t)
 
 export
 elabInterface : {vars : _} ->
@@ -255,7 +269,7 @@ elabInterface {vars} fc vis env nest constraints iname params dets mcon body
          -- Machine generated names need to be qualified when looking them up
          conName <- inCurrentNS conName_in
          let meth_sigs = mapMaybe getSig body -- (FC, RigCount, List FnOpt, Name, (Bool, RawImp))
-         let meth_decls = map (\ (f, c, o, n, b, ty) => (n, c, b, ty)) meth_sigs
+         let meth_decls = map (\ (f, c, o, n, b, ty) => (n, c, o, b, ty)) meth_sigs
          let meth_names = map fst meth_decls
          let defaults = mapMaybe getDefault body
 
@@ -321,7 +335,7 @@ elabInterface {vars} fc vis env nest constraints iname params dets mcon body
     -- Check that a default definition is correct. We just discard it here once
     -- we know it's okay, since we'll need to re-elaborate it for each
     -- instance, to specialise it
-    elabDefault : List (Name, RigCount, (Bool, RawImp)) ->
+    elabDefault : List (Name, RigCount, List FnOpt, Bool, RawImp) ->
                   (FC, List FnOpt, Name, List ImpClause) ->
                   Core (Name, List ImpClause)
     elabDefault tydecls (fc, opts, n, cs)
@@ -332,7 +346,7 @@ elabInterface {vars} fc vis env nest constraints iname params dets mcon body
              (rig, dty) <-
                    the (Core (RigCount, RawImp)) $
                        case lookup n tydecls of
-                          Just (r, (_, t)) => pure (r, t)
+                          Just (r, _, _, t) => pure (r, t)
                           Nothing => throw (GenericMsg fc ("No method named " ++ show n ++ " in interface " ++ show iname))
 
              let ity = apply (IVar fc iname) (map (IVar fc) (map fst params))
@@ -379,6 +393,9 @@ elabInterface {vars} fc vis env nest constraints iname params dets mcon body
         changeName : Name -> ImpClause -> ImpClause
         changeName dn (PatClause fc lhs rhs)
             = PatClause fc (changeNameTerm dn lhs) rhs
+        changeName dn (WithClause fc lhs wval cs)
+            = WithClause fc (changeNameTerm dn lhs) wval
+                         (map (changeName dn) cs)
         changeName dn (ImpossibleClause fc lhs)
             = ImpossibleClause fc (changeNameTerm dn lhs)
 

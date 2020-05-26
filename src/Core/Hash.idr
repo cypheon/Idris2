@@ -64,6 +64,8 @@ Hashable String where
 export
 Hashable Name where
   hashWithSalt h (MN s _) = hashWithSalt h s
+  hashWithSalt h (DN _ n) = hashWithSalt h n
+  hashWithSalt h (NS ns n) = hashWithSalt (hashWithSalt h ns) n
   hashWithSalt h (Resolved i) = hashWithSalt h i
   hashWithSalt h n = hashWithSalt h (show n)
 
@@ -150,7 +152,7 @@ mutual
   Hashable (CaseTree vars) where
     hashWithSalt h (Case idx x scTy xs)
         = h `hashWithSalt` 0 `hashWithSalt` idx `hashWithSalt` xs
-    hashWithSalt h (STerm x)
+    hashWithSalt h (STerm _ x)
         = h `hashWithSalt` 1 `hashWithSalt` x
     hashWithSalt h (Unmatched msg)
         = h `hashWithSalt` 2

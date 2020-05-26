@@ -212,16 +212,18 @@ const bufferFuncsLE = {
 };
 const bufferFuncs = bufferFuncsLE;
 
-exports.idris2_bufferFromFile = (filename, _world) => {
+exports.idris2_bufferFromFile = (dir, filename, _world) => {
+  const path = filename.startsWith('/') ? filename : (dir + '/' + filename);
   try {
-    return fs.readFileSync(filename);
+    return fs.readFileSync(path);
   } catch (e) {
   }
   return undefined;
 };
-exports.idris2_writeBufferToFile = (filename, buf, maxBytes, _world) => {
+exports.idris2_writeBufferToFile = (dir, filename, buf, maxBytes, _world) => {
+  const path = filename.startsWith('/') ? filename : (dir + '/' + filename);
   try {
-    fs.writeFileSync(filename, buf.slice(0, Number(maxBytes)));
+    fs.writeFileSync(path, buf.slice(0, Number(maxBytes)));
     return js2idris(0);
   } catch (e) {
     return js2idris(1);

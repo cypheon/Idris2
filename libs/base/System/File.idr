@@ -38,7 +38,7 @@ prim__readLine : FilePtr -> PrimIO (Ptr String)
 prim__readChars : Int -> FilePtr -> PrimIO (Ptr String)
 %foreign support "fgetc"
          "es2020:fgetc,idris2_support"
-prim__readChar : FilePtr -> PrimIO Char
+prim__readChar : FilePtr -> PrimIO Int
 %foreign support "idris2_writeLine"
          "es2020:idris2_writeLine,idris2_support"
 prim__writeLine : FilePtr -> String -> PrimIO Int
@@ -49,9 +49,9 @@ prim__eof : FilePtr -> PrimIO Int
          "es2020:idris2_fflush,idris2_support"
 prim__flush : FilePtr -> PrimIO Int
 
-%foreign support "idris2_fileRemove"
+%foreign support "idris2_removeFile"
          "es2020:idris2_fileRemove,idris2_support"
-prim__fileRemove : String -> PrimIO Int
+prim__removeFile : String -> PrimIO Int
 %foreign support "idris2_fileSize"
          "es2020:idris2_fileSize,idris2_support"
 prim__fileSize : FilePtr -> PrimIO Int
@@ -179,7 +179,7 @@ fGetChar (FHandle h)
          ferr <- primIO (prim_error h)
          if (ferr /= 0)
             then returnError
-            else ok c
+            else ok (cast c)
 
 export
 fPutStr : (h : File) -> String -> IO (Either FileError ())
@@ -230,9 +230,9 @@ fileStatusTime (FHandle f)
             else returnError
 
 export
-fileRemove : String -> IO (Either FileError ())
-fileRemove fname
-    = do res <- primIO (prim__fileRemove fname)
+removeFile : String -> IO (Either FileError ())
+removeFile fname
+    = do res <- primIO (prim__removeFile fname)
          if res == 0
             then ok ()
             else returnError
@@ -285,7 +285,7 @@ writeFile fn contents = do
      closeFile h
      pure (Right ())
 
-namespace FileMode 
+namespace FileMode
   public export
   data FileMode = Read | Write | Execute
 

@@ -185,6 +185,7 @@ mutual
   jsConstAlt i target (MkNConstAlt c exp) =
     pure $ "if (" ++ target ++ " === " ++ (jsConstant c) ++ "){ return " ++ !(jsExp i exp) ++ ";}"
 
+  partial
   jsConAlt : Int -> String -> NamedConAlt -> Core String
   jsConAlt i target (MkNConAlt n (Just tag) args exp) =
     pure $ "if (" ++ target ++ "[0] === " ++ (show tag) ++ "){ return " ++ bindArgs args !(jsExp i exp) ++ ";}"

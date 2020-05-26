@@ -3,7 +3,7 @@ module Idris.Parser
 import        Core.Options
 import        Idris.Syntax
 import public Parser.Source
-import        Parser.Lexer
+import        Parser.Lexer.Source
 import        TTImp.TTImp
 
 import public Text.Parser
@@ -128,6 +128,7 @@ mutual
     <|> lambdaCase fname indents
     <|> lazy fname indents
     <|> if_ fname indents
+    <|> with_ fname indents
     <|> doBlock fname indents
     <|> do start <- location
            f <- simpleExpr fname indents
@@ -156,7 +157,7 @@ mutual
   argExpr q fname indents
       = do continue indents
            arg <- simpleExpr fname indents
-           the (EmptyRule _) $ case arg of
+           the (SourceEmptyRule _) $ case arg of
                 PHole loc _ n => pure (ExpArg (PHole loc True n))
                 t => pure (ExpArg t)
     <|> do continue indents
@@ -187,6 +188,29 @@ mutual
            tm <- expr pdef fname indents
            symbol "}"
            pure (Nothing, tm)
+
+  with_ : FileName -> IndentInfo -> Rule PTerm
+  with_ fname indents
+      = do start <- location
+           keyword "with"
+           commit
+           ns <- singleName <|> nameList
+           end <- location
+           rhs <- expr pdef fname indents
+           pure (PWithUnambigNames (MkFC fname start end) ns rhs)
+    where
+      singleName : Rule (List Name)
+      singleName = do
+        n <- name
+        pure [n]
+
+      nameList : Rule (List Name)
+      nameList = do
+        symbol "["
+        commit
+        ns <- sepBy1 (symbol ",") name
+        symbol "]"
+        pure ns
 
   opExpr : ParseOpts -> FileName -> IndentInfo -> Rule PTerm
   opExpr q fname indents
@@ -258,7 +282,7 @@ mutual
             -- all the other bracketed expressions
             tuple fname start indents e)
 
-  getInitRange : List PTerm -> EmptyRule (PTerm, Maybe PTerm)
+  getInitRange : List PTerm -> SourceEmptyRule (PTerm, Maybe PTerm)
   getInitRange [x] = pure (x, Nothing)
   getInitRange [x, y] = pure (x, Just y)
   getInitRange _ = fatalError "Invalid list range syntax"
@@ -384,7 +408,7 @@ mutual
            end <- location
            pure (PUnifyLog (MkFC fname start end) (integerToNat lvl) e)
 
-  multiplicity : EmptyRule (Maybe Integer)
+  multiplicity : SourceEmptyRule (Maybe Integer)
   multiplicity
       = do c <- intLit
            pure (Just c)
@@ -392,7 +416,7 @@ mutual
 --            pure (Just 2) -- Borrowing, not implemented
     <|> pure Nothing
 
-  getMult : Maybe Integer -> EmptyRule RigCount
+  getMult : Maybe Integer -> SourceEmptyRule RigCount
   getMult (Just 0) = pure erased
   getMult (Just 1) = pure linear
   getMult Nothing = pure top
@@ -421,7 +445,7 @@ mutual
                    Rule (List (RigCount, Name, PTerm))
   pibindListName fname start indents
        = do rigc <- multiplicity
-            ns <- sepBy1 (symbol ",") unqualifiedName
+            ns <- sepBy1 (symbol ",") binderName
             symbol ":"
             ty <- expr pdef fname indents
             atEnd indents
@@ -429,11 +453,15 @@ mutual
             pure (map (\n => (rig, UN n, ty)) ns)
      <|> sepBy1 (symbol ",")
                 (do rigc <- multiplicity
-                    n <- name
+                    n <- binderName
                     symbol ":"
                     ty <- expr pdef fname indents
                     rig <- getMult rigc
-                    pure (rig, n, ty))
+                    pure (rig, UN n, ty))
+    where
+      -- _ gets treated specially here, it means "I don't care about the name"
+      binderName : Rule String
+      binderName = unqualifiedName <|> do symbol "_"; pure "_"
 
   pibindList : FileName -> FilePos -> IndentInfo ->
                Rule (List (RigCount, Maybe Name, PTerm))
@@ -698,7 +726,7 @@ mutual
   lowerFirst "" = False
   lowerFirst str = assert_total (isLower (prim__strHead str))
 
-  validPatternVar : Name -> EmptyRule ()
+  validPatternVar : Name -> SourceEmptyRule ()
   validPatternVar (UN n)
       = if lowerFirst n then pure ()
                         else fail "Not a pattern variable"
@@ -814,7 +842,7 @@ visOption
   <|> do keyword "private"
          pure Private
 
-visibility : EmptyRule Visibility
+visibility : SourceEmptyRule Visibility
 visibility
     = visOption
   <|> pure Private
@@ -942,7 +970,7 @@ dataOpt
          pure NoNewtype
 
 dataBody : FileName -> Int -> FilePos -> Name -> IndentInfo -> PTerm ->
-           EmptyRule PDataDecl
+          SourceEmptyRule PDataDecl
 dataBody fname mincol start n indents ty
     = do atEndIndent indents
          end <- location
@@ -1094,7 +1122,7 @@ namespaceHead : Rule (List String)
 namespaceHead
     = do keyword "namespace"
          commit
-         ns <- nsIdent
+         ns <- namespacedIdent
          pure ns
 
 namespaceDecl : FileName -> IndentInfo -> Rule PDecl
@@ -1174,6 +1202,9 @@ fnDirectOpt fname
   <|> do pragma "inline"
          commit
          pure $ IFnOpt Inline
+  <|> do pragma "tcinline"
+         commit
+         pure $ IFnOpt TCInline
   <|> do pragma "extern"
          pure $ IFnOpt ExternFn
   <|> do pragma "macro"
@@ -1195,7 +1226,7 @@ visOpt fname
          pure (Right opt)
 
 getVisibility : Maybe Visibility -> List (Either Visibility PFnOpt) ->
-                EmptyRule Visibility
+               SourceEmptyRule Visibility
 getVisibility Nothing [] = pure Private
 getVisibility (Just vis) [] = pure vis
 getVisibility Nothing (Left x :: xs) = getVisibility (Just x) xs
@@ -1207,7 +1238,7 @@ getRight : Either a b -> Maybe b
 getRight (Left _) = Nothing
 getRight (Right v) = Just v
 
-constraints : FileName -> IndentInfo -> EmptyRule (List (Maybe Name, PTerm))
+constraints : FileName -> IndentInfo -> SourceEmptyRule (List (Maybe Name, PTerm))
 constraints fname indents
     = do tm <- appExpr pdef fname indents
          symbol "=>"
@@ -1223,7 +1254,7 @@ constraints fname indents
          pure ((Just n, tm) :: more)
   <|> pure []
 
-implBinds : FileName -> IndentInfo -> EmptyRule (List (Name, RigCount, PTerm))
+implBinds : FileName -> IndentInfo -> SourceEmptyRule (List (Name, RigCount, PTerm))
 implBinds fname indents
     = do symbol "{"
          m <- multiplicity
@@ -1331,7 +1362,7 @@ recordParam fname indents
          pure $ map (\(c, n, tm) => (n, c, Explicit, tm)) params
   <|> do symbol "{"
          commit
-         info <- the (EmptyRule (PiInfo PTerm))
+         info <- the (SourceEmptyRule (PiInfo PTerm))
                  (pure  AutoImplicit <* keyword "auto"
               <|>(do
                   keyword "default"
@@ -1486,20 +1517,20 @@ import_ fname indents
          keyword "import"
          reexp <- option False (do keyword "public"
                                    pure True)
-         ns <- nsIdent
+         ns <- namespacedIdent
          nsAs <- option ns (do exactIdent "as"
-                               nsIdent)
+                               namespacedIdent)
          end <- location
          atEnd indents
          pure (MkImport (MkFC fname start end) reexp ns nsAs)
 
 export
-prog : FileName -> EmptyRule Module
+prog : FileName -> SourceEmptyRule Module
 prog fname
     = do start <- location
          nspace <- option ["Main"]
                       (do keyword "module"
-                          nsIdent)
+                          namespacedIdent)
          end <- location
          imports <- block (import_ fname)
          ds <- block (topDecl fname)
@@ -1507,12 +1538,12 @@ prog fname
                         nspace imports (collectDefs (concat ds)))
 
 export
-progHdr : FileName -> EmptyRule Module
+progHdr : FileName -> SourceEmptyRule Module
 progHdr fname
     = do start <- location
          nspace <- option ["Main"]
                       (do keyword "module"
-                          nsIdent)
+                          namespacedIdent)
          end <- location
          imports <- block (import_ fname)
          pure (MkModule (MkFC fname start end)
@@ -1780,7 +1811,7 @@ eval = do
   pure (Eval tm)
 
 export
-command : EmptyRule REPLCmd
+command : SourceEmptyRule REPLCmd
 command
     = do eoi
          pure NOP
