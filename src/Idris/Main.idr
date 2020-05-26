@@ -37,10 +37,11 @@ findInput [] = Nothing
 findInput (InputFile f :: fs) = Just f
 findInput (_ :: fs) = findInput fs
 
--- Add extra data from the "IDRIS2_x" environment variables
-updateEnv : {auto c : Ref Ctxt Defs} ->
-            Core ()
-updateEnv
+-- Add extra library directories from the "BLODWEN_PATH"
+-- environment variable
+updatePaths : {auto c : Ref Ctxt Defs} ->
+              Core ()
+updatePaths
     = do bprefix <- coreLift $ getEnv "IDRIS2_PREFIX"
          the (Core ()) $ case bprefix of
               Just p => setPrefix p
@@ -57,13 +58,6 @@ updateEnv
          the (Core ()) $ case blibs of
               Just path => do traverse_ addLibDir (map trim (split (==pathSep) path))
               Nothing => pure ()
-         cg <- coreLift $ getEnv "IDRIS2_CG"
-         the (Core ()) $ case cg of
-              Just e => case getCG e of
-                             Just cg => setCG cg
-                             Nothing => throw (InternalError ("Unknown code generator " ++ show e))
-              Nothing => pure ()
-
          -- IDRIS2_PATH goes first so that it overrides this if there's
          -- any conflicts. In particular, that means that setting IDRIS2_PATH
          -- for the tests means they test the local version not the installed
@@ -84,7 +78,7 @@ updateREPLOpts : {auto o : Ref ROpts REPLOpts} ->
 updateREPLOpts
     = do opts <- get ROpts
          ed <- coreLift $ getEnv "EDITOR"
-         the (Core ()) $ case ed of
+         case ed of
               Just e => put ROpts (record { editor = e } opts)
               Nothing => pure ()
 
@@ -139,7 +133,7 @@ stMain opts
          addPrimitives
 
          setWorkingDir "."
-         updateEnv
+         updatePaths
          let ide = ideMode opts
          let ideSocket = ideModeSocket opts
          let outmode = if ide then IDEMode 0 stdin stdout else REPL False
@@ -181,17 +175,18 @@ stMain opts
                      if not ideSocket
                       then do
                        setOutput (IDEMode 0 stdin stdout)
-                       --replIDE {c} {u} {m}
+                       replIDE {c} {u} {m}
                      else do
-                       let (host, port) = ideSocketModeHostPort opts
-                       f <- coreLift $ initIDESocketFile host port
-                       case f of
-                         Left err => do
-                           coreLift $ putStrLn err
-                           coreLift $ exitWith (ExitFailure 1)
-                         Right file => do
-                           setOutput (IDEMode 0 file file)
-                           replIDE {c} {u} {m}
+                       throw (InternalError "Not implemeted yet")
+--                        let (host, port) = ideSocketModeHostPort opts
+--                        f <- coreLift $ initIDESocketFile host port
+--                        case f of
+--                          Left err => do
+--                            coreLift $ putStrLn err
+--                            coreLift $ exit 1
+--                          Right file => do
+--                            setOutput (IDEMode 0 file file)
+--                            replIDE {c} {u} {m}
                    else do
                        repl {c} {u} {m}
                        showTimeRecord
