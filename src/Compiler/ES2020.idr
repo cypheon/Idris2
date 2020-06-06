@@ -18,6 +18,7 @@ import Data.Strings
 import Data.Vect
 import System
 import System.Info
+import System.File
 
 %default covering
 
