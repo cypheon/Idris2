@@ -3,6 +3,8 @@ module Core.Env
 import Core.TT
 import Data.List
 
+%default total
+
 -- Environment containing types and values of local variables
 public export
 data Env : (tm : List Name -> Type) -> List Name -> Type where
@@ -119,6 +121,8 @@ export
 abstractFullEnvType : {vars : _} ->
                       FC -> Env Term vars -> (tm : Term vars) -> ClosedTerm
 abstractFullEnvType fc [] tm = tm
+abstractFullEnvType fc (Pi c e ty :: env) tm
+    = abstractFullEnvType fc env (Bind fc _ (Pi c e ty) tm)
 abstractFullEnvType fc (b :: env) tm
     = abstractFullEnvType fc env (Bind fc _
 						(Pi (multiplicity b) Explicit (binderType b)) tm)
@@ -231,3 +235,11 @@ shrinkEnv (b :: env) (KeepCons p)
     = do env' <- shrinkEnv env p
          b' <- shrinkBinder b p
          pure (b' :: env')
+
+-- Make a dummy environment, if we genuinely don't care about the values
+-- and types of the contents.
+-- We use this when building and comparing case trees.
+export
+mkEnv : FC -> (vs : List Name) -> Env Term vs
+mkEnv fc [] = []
+mkEnv fc (n :: ns) = PVar top Explicit (Erased fc False) :: mkEnv fc ns

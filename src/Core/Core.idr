@@ -8,6 +8,7 @@ import Parser.Source
 
 import public Data.IORef
 import System
+import System.File
 
 %default covering
 
@@ -125,6 +126,7 @@ data Error : Type where
      CyclicImports : List (List String) -> Error
      ForceNeeded : Error
      InternalError : String -> Error
+     UserError : String -> Error
 
      InType : FC -> Name -> Error -> Error
      InCon : FC -> Name -> Error -> Error
@@ -289,6 +291,7 @@ Show Error where
       showMod ns = showSep "." (reverse ns)
   show ForceNeeded = "Internal error when resolving implicit laziness"
   show (InternalError str) = "INTERNAL ERROR: " ++ str
+  show (UserError str) = "Error: " ++ str
 
   show (InType fc n err)
        = show fc ++ ":When elaborating type of " ++ show n ++ ":\n" ++
@@ -362,6 +365,7 @@ getErrorLoc (ModuleNotFound loc _) = Just loc
 getErrorLoc (CyclicImports _) = Nothing
 getErrorLoc ForceNeeded = Nothing
 getErrorLoc (InternalError _) = Nothing
+getErrorLoc (UserError _) = Nothing
 getErrorLoc (InType _ _ err) = getErrorLoc err
 getErrorLoc (InCon _ _ err) = getErrorLoc err
 getErrorLoc (InLHS _ _ err) = getErrorLoc err

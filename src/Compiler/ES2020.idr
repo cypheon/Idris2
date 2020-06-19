@@ -18,6 +18,7 @@ import Data.Strings
 import Data.Vect
 import System
 import System.Info
+import System.File
 
 %default covering
 
@@ -251,8 +252,13 @@ getNodeJsForeign : List String -> Maybe (String, String)
 getNodeJsForeign [] = Nothing
 getNodeJsForeign (x::xs) =
   let (cc, def) = break (== ':') x in
-      if cc == "es2020" then Just $ map strTail (break (== ',') (strTail def))
+      if cc == "es2020" then Just $ map strTail' (break (== ',') (strTail' def))
                          else getNodeJsForeign xs
+  -- TODO: remove when total strTail comes
+  where strTail': String -> String
+        strTail' x = case unpack x of
+                      [] => ""
+                      (x::xs) => pack xs
 
 jsFgnDef : {auto c : Ref Ctxt Defs} ->
             {auto l : Ref Loaded (List String)} ->

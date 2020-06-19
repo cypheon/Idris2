@@ -2,8 +2,11 @@ import Data.Vect
 import Data.List
 import Data.Strings
 
+import Decidable.Equality
+
 %default total
 
+public export
 data GameState : Type where
   NotRunning : GameState
   Running : (guesses : Nat) -> (letters : Nat) -> GameState
@@ -13,6 +16,7 @@ letters str = nub (map toUpper (unpack str))
 
 data GuessResult = Correct | Incorrect
 
+export
 data GameCmd : (ty : Type) -> GameState -> (ty -> GameState) -> Type where
   NewGame : (word : String) ->
             GameCmd () NotRunning (const (Running 6 (length (letters word))))
