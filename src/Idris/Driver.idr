@@ -30,6 +30,7 @@ import Data.Strings
 import System
 import System.Directory
 import System.File
+import System.Info
 import Libraries.Utils.Path
 import Libraries.Utils.Term
 
@@ -135,7 +136,7 @@ banner = "     ____    __     _         ___                                     
          "  _/ // /_/ / /  / (__  )   / __/      https://www.idris-lang.org           \n" ++
          " /___/\\__,_/_/  /_/____/   /____/      Type :? for help                     \n" ++
          "\n" ++
-         "Welcome to Idris 2.  Enjoy yourself!"
+         "Welcome to Idris 2 on " ++ codegen ++ ".  Enjoy yourself!"
 
 checkVerbose : List CLOpt -> Bool
 checkVerbose [] = False
