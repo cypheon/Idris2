@@ -158,6 +158,86 @@ unload fc _ f [] = pure f
 -- only outermost LApp must be lazy as rest will be closures
 unload fc lazy f (a :: as) = unload fc Nothing (LApp fc lazy f a) as
 
+total
+lengthDistributesOverAppend
+  : (xs, ys : List a)
+  -> length (xs ++ ys) = length xs + length ys
+lengthDistributesOverAppend [] ys = Refl
+lengthDistributesOverAppend (x :: xs) ys =
+  cong S $ lengthDistributesOverAppend xs ys
+
+record Used (vars : List Name) where
+  constructor MkUsed
+  used : Vect (length vars) Bool
+
+initUsed : {vars : _} -> Core (Used vars)
+initUsed {vars} = do
+  pure $ MkUsed (replicate (length vars) False)
+
+weakenUsed : {vars : _} ->
+               (bound : List Name) ->
+               (Used vars) ->
+               Core (Used (bound ++ vars))
+weakenUsed {vars} bound (MkUsed used) = do
+  pure $ MkUsed (rewrite (lengthDistributesOverAppend bound vars) in ((replicate (length bound) False) ++ used))
+
+contractUsed : {vars : _} ->
+               (Used (x::vars)) ->
+               Core (Used vars)
+contractUsed (MkUsed (_::rest)) = pure $ MkUsed rest
+
+contractUsedMany : {vars : _} ->
+                   {remove : _} ->
+                   (Used (remove ++ vars)) ->
+                   Core (Used vars)
+contractUsedMany {remove=[]} x = pure x
+contractUsedMany {remove=(r::rs)} x = contractUsedMany {remove=rs} !(contractUsed x)
+
+natFin : {vars : _} ->
+         (idx : Nat) ->
+         (0 prf : IsVar x idx vars) ->
+         Fin (length vars)
+natFin Z First = FZ
+natFin (S x) First impossible
+natFin (S x) (Later l) = FS (natFin x l)
+
+markUsed : {vars : _} ->
+           (idx : Nat) ->
+           {0 prf : IsVar x idx vars} ->
+           Used vars ->
+           Core (Used vars)
+markUsed {vars} {prf} idx (MkUsed us) = do
+  let newUsed = replaceAt (natFin idx prf) True us
+  pure $ MkUsed newUsed
+
+mergeUsed : {vars : List Name} ->
+           Used vars ->
+           Used vars ->
+           Core (Used vars)
+mergeUsed {vars=[]} (MkUsed []) (MkUsed _) = pure $ MkUsed []
+mergeUsed {vars=(_::_)} (MkUsed (x::xs)) (MkUsed (y::ys)) = do
+  MkUsed rest <- mergeUsed (MkUsed xs) (MkUsed ys)
+  pure $ MkUsed ((x || y)::rest)
+
+getUnused : {vars : List Name} ->
+            Used vars ->
+            Core (Vect (length vars) Bool)
+getUnused {vars} (MkUsed uv) = pure $ getUnused' uv
+  where
+    getUnused' : Vect (length vars) Bool -> Vect (length vars) Bool
+    getUnused' v = map not v
+
+foldlCore : (Foldable t) => (f : a -> b -> Core a) -> (init : a) -> t b -> Core a
+foldlCore f i = foldl (\ma, b => ma >>= flip f b) (pure i)
+
+total
+dropped : (vars : List Name) ->
+          (drop : Vect (length vars) Bool) ->
+          List Name
+dropped [] _ = []
+dropped (x::xs) (False::us) = x::(dropped xs us)
+dropped (x::xs) (True::us) = dropped xs us
+
 mutual
   makeLam : {auto l : Ref Lifts LDefs} ->
             {vars : _} ->
@@ -168,24 +248,33 @@ mutual
   makeLam fc bound (CLam _ x sc') = makeLam fc {doLazyAnnots} {lazy} (x :: bound) sc'
   makeLam {vars} fc bound sc
       = do scl <- liftExp {doLazyAnnots} {lazy} sc
+           scUsedL <- usedVars scl
+           unused <- getUnused scUsedL
+           -- TODO: replace `believe_me`s with real proof
+           let (_, uvarsI) = Vect.splitAt (length bound) (believe_me unused)
+               uvars = the (Vect (length vars) Bool) uvarsI
+               unused' = rewrite lengthDistributesOverAppend bound vars in (replicate (length bound) False) ++ uvars
+               scl' = dropUnused unused' scl
+               prf = sym $ the (dropped (bound ++ vars) unused' = bound ++ dropped vars uvars) $ believe_me True
            n <- genName
            ldefs <- get Lifts
-           put Lifts (record { defs $= ((n, MkLFun vars bound scl) ::) } ldefs)
+           put Lifts (record { defs $= ((n, MkLFun (dropped vars uvars) bound (rewrite prf in scl')) ::) } ldefs)
            -- TODO: an optimisation here would be to spot which variables
            -- aren't used in the new definition, and not abstract over them
            -- in the new definition. Given that we have to do some messing
            -- about with indices anyway, it's probably not costly to do.
-           pure $ LUnderApp fc n (length bound) (allVars fc vars)
+           pure $ LUnderApp fc n (length bound) (allVars fc vars uvars)
     where
-        allPrfs : (vs : List Name) -> List (Var vs)
-        allPrfs [] = []
-        allPrfs (v :: vs) = MkVar First :: map weaken (allPrfs vs)
+        allPrfs : (vs : List Name) -> (unused : Vect (length vs) Bool) -> List (Var vs)
+        allPrfs [] _ = []
+        allPrfs (v :: vs) (False::uvs) = MkVar First :: map weaken (allPrfs vs uvs)
+        allPrfs (v :: vs) (True::uvs) = map weaken (allPrfs vs uvs)
 
         -- apply to all the variables. 'First' will be first in the last, which
         -- is good, because the most recently bound name is the first argument to
         -- the resulting function
-        allVars : FC -> (vs : List Name) -> List (Lifted vs)
-        allVars fc vs = map (\ (MkVar p) => LLocal fc p) (allPrfs vs)
+        allVars : FC -> (vs : List Name) -> (uvars : Vect (length vs) Bool) -> List (Lifted vs)
+        allVars fc vs uvars = map (\ (MkVar p) => LLocal fc p) (allPrfs vs uvars)
 
 -- if doLazyAnnots = True then annotate function application with laziness
 -- otherwise use old behaviour (thunk is a function)
@@ -233,6 +322,124 @@ mutual
   liftExp (CPrimVal fc c) = pure $ LPrimVal fc c
   liftExp (CErased fc) = pure $ LErased fc
   liftExp (CCrash fc str) = pure $ LCrash fc str
+
+  usedVars : {vars : _} ->
+             {auto l : Ref Lifts LDefs} ->
+             Lifted vars ->
+             Core (Used vars)
+  usedVars (LLocal {idx} fc prf) = do
+    used <- initUsed {vars}
+    markUsed {prf} idx used
+  usedVars (LAppName fc lazy n args) = do
+    allUsed <- traverse usedVars args
+    foldlCore mergeUsed !(initUsed) allUsed
+  usedVars (LUnderApp fc n miss args) = do
+    allUsed <- traverse usedVars args
+    foldlCore mergeUsed !(initUsed) allUsed
+  usedVars (LApp fc lazy c arg) = do
+    mergeUsed !(usedVars c) !(usedVars arg)
+  usedVars (LLet fc x val sc) = do
+    valUsed <- usedVars val
+    inner <- usedVars sc
+    mergeUsed !(contractUsed inner) valUsed
+  usedVars (LCon fc n tag args) = do
+    allUsed <- traverse usedVars args
+    foldlCore mergeUsed !(initUsed) allUsed
+  usedVars (LOp fc lazy fn args) = do
+    allUsed <- traverseVect usedVars args
+    foldlCore mergeUsed !(initUsed) allUsed
+  usedVars (LExtPrim fc lazy fn args) = do
+    allUsed <- traverse usedVars args
+    foldlCore mergeUsed !(initUsed) allUsed
+  usedVars (LConCase fc sc alts def) = do
+      scUsed <- usedVars sc
+      defUsed <- traverseOpt usedVars def
+      altsUsed <- traverse usedConAlt alts
+      mergedAlts <- foldlCore mergeUsed !(initUsed) altsUsed
+      scDefUsed <- mergeUsed scUsed (maybe !(initUsed) id defUsed)
+      mergeUsed scDefUsed mergedAlts
+    where
+      usedConAlt : {default Nothing lazy : Maybe LazyReason} ->
+                   LiftedConAlt vars -> Core (Used vars)
+      usedConAlt (MkLConAlt n tag args sc) = do
+        contractUsedMany {remove=args} !(usedVars sc)
+
+  usedVars (LConstCase fc sc alts def) = do
+      scUsed <- usedVars sc
+      defUsed <- traverseOpt usedVars def
+      altsUsed <- traverse usedConstAlt alts
+      mergedAlts <- foldlCore mergeUsed !(initUsed) altsUsed
+      scDefUsed <- mergeUsed scUsed (maybe !(initUsed) id defUsed)
+      mergeUsed scDefUsed mergedAlts
+    where
+      usedConstAlt : {default Nothing lazy : Maybe LazyReason} ->
+                     LiftedConstAlt vars -> Core (Used vars)
+      usedConstAlt (MkLConstAlt c sc) = usedVars sc
+
+  usedVars (LPrimVal _ _) = initUsed
+  usedVars (LErased _) = initUsed
+  usedVars (LCrash _ _) = initUsed
+
+  dropIdx : {vars : _} ->
+            {idx : _} ->
+            (unused : Vect (length vars) Bool) ->
+            (0 p : IsVar x idx vars) ->
+            Var (dropped vars unused)
+  dropIdx (False::_) First = MkVar First
+  dropIdx (True::_) First = assert_total $ idris_crash "impossible"
+  dropIdx (False::rest) (Later p) = Var.later $ dropIdx rest p
+  dropIdx (True::rest) (Later p) = dropIdx rest p
+
+  dropUnused : {vars : _} ->
+               {auto l : Ref Lifts LDefs} ->
+               (unused : Vect (length vars) Bool) ->
+               (l : Lifted vars) ->
+               Lifted (dropped vars unused)
+  dropUnused _ (LPrimVal fc val) = LPrimVal fc val
+  dropUnused _ (LErased fc) = LErased fc
+  dropUnused _ (LCrash fc msg) = LCrash fc msg
+  dropUnused unused (LLocal fc p) =
+    let (MkVar p') = dropIdx unused p in LLocal fc p'
+  dropUnused unused (LCon fc n tag args) =
+    let args' = map (dropUnused unused) args in
+        LCon fc n tag args'
+  dropUnused unused (LLet fc n val sc) =
+    let val' = dropUnused unused val
+        sc' = dropUnused (False::unused) sc in
+        LLet fc n val' sc'
+  dropUnused unused (LApp fc lazy c arg) =
+    let c' = dropUnused unused c
+        arg' = dropUnused unused arg in
+        LApp fc lazy c' arg'
+  dropUnused unused (LOp fc lazy fn args) =
+    let args' = map (dropUnused unused) args in
+        LOp fc lazy fn args'
+  dropUnused unused (LExtPrim fc lazy n args) =
+    let args' = map (dropUnused unused) args in
+        LExtPrim fc lazy n args'
+  dropUnused unused (LAppName fc lazy n args) =
+    let args' = map (dropUnused unused) args in
+        LAppName fc lazy n args'
+  dropUnused unused (LUnderApp fc n miss args) =
+    let args' = map (dropUnused unused) args in
+        LUnderApp fc n miss args'
+  dropUnused {vars} unused (LConCase fc sc alts def) =
+    let alts' = map dropConCase alts in
+        LConCase fc (dropUnused unused sc) alts' (map (dropUnused unused) def)
+    where
+      dropConCase : LiftedConAlt vars ->
+                    LiftedConAlt (dropped vars unused)
+      dropConCase (MkLConAlt n t args sc) =
+        let extendedUnused = (replicate (length args) False) ++ unused in
+        -- TODO: replace `believe_me` with real proof
+        MkLConAlt n t args (believe_me $ dropUnused (rewrite lengthDistributesOverAppend args vars in extendedUnused) sc)
+  dropUnused unused (LConstCase fc sc alts def) =
+    let alts' = map dropConstCase alts in
+        LConstCase fc (dropUnused unused sc) alts' (map (dropUnused unused) def)
+    where
+      dropConstCase : LiftedConstAlt vars ->
+                      LiftedConstAlt (dropped vars unused)
+      dropConstCase (MkLConstAlt c val) = MkLConstAlt c (dropUnused unused val)
 
 export
 liftBody : {vars : _} -> {doLazyAnnots : Bool} ->
