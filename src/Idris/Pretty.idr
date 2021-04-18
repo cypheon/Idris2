@@ -38,7 +38,7 @@ colorAnn Code = color Magenta
 colorAnn Keyword = color Red
 colorAnn Pragma = color BrightMagenta
 colorAnn Meta = color Green
-colorAnn (Link _) = color White
+colorAnn (Link _) = []
 colorAnn Header = bold
 
 export
