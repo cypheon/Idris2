@@ -668,7 +668,7 @@ loadMainFile f
 
 docsOrSignature : {auto c : Ref Ctxt Defs} ->
                   {auto s : Ref Syn SyntaxInfo} ->
-                  FC -> Name -> Core (List String)
+                  FC -> Name -> Core (Doc IdrisAnn)
 docsOrSignature fc n
     = do syn  <- get Syn
          defs <- get Ctxt
@@ -679,11 +679,11 @@ docsOrSignature fc n
              | [] => typeSummary defs
          getDocsForName fc n
   where
-    typeSummary : Defs -> Core (List String)
+    typeSummary : Defs -> Core (Doc IdrisAnn)
     typeSummary defs = do Just def <- lookupCtxtExact n (gamma defs)
-                            | Nothing => pure []
+                            | Nothing => pure neutral
                           ty <- normaliseHoles defs [] (type def)
-                          pure [(show n) ++ " : " ++ (show !(resugar [] ty))]
+                          pure $ pretty ((show n) ++ " : " ++ (show !(resugar [] ty)))
 
 equivTypes : {auto c : Ref Ctxt Defs} ->
              (ty1 : ClosedTerm) ->
@@ -844,7 +844,7 @@ process (TypeSearch searchTerm)
               filterM (\def => equivTypes def.type ty') allDefs
          put Ctxt defs
          doc <- traverse (docsOrSignature replFC) $ (.fullname) <$> filteredDefs
-         pure $ Printed $ vsep $ pretty <$> (intersperse "\n" $ join doc)
+         pure $ Printed $ vsep doc
 process (Missing n)
     = do defs <- get Ctxt
          case !(lookupCtxtName n (gamma defs)) of
@@ -872,7 +872,7 @@ process (Total n)
                                (map fst ts)
 process (Doc itm)
     = do doc <- getDocsForPTerm itm
-         pure $ Printed $ vsep $ pretty <$> doc
+         pure $ Printed doc
 process (Browse ns)
     = do doc <- getContents ns
          pure $ Printed $ vsep $ pretty <$> doc

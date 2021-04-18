@@ -26,6 +26,7 @@ data IdrisAnn
   | Keyword
   | Pragma
   | Link Name
+  | Header
 
 export
 colorAnn : IdrisAnn -> AnsiStyle
@@ -38,6 +39,7 @@ colorAnn Keyword = color Red
 colorAnn Pragma = color BrightMagenta
 colorAnn Meta = color Green
 colorAnn (Link _) = color White
+colorAnn Header = bold
 
 export
 error : Doc IdrisAnn -> Doc IdrisAnn
@@ -62,6 +64,10 @@ meta = annotate Meta
 export
 code : Doc IdrisAnn -> Doc IdrisAnn
 code = annotate Code
+
+export
+header : Doc IdrisAnn -> Doc IdrisAnn
+header = annotate Header
 
 let_ : Doc IdrisAnn
 let_ = keyword (pretty "let")

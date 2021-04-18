@@ -5,6 +5,7 @@ import Core.Core
 import Core.Env
 import Core.TT
 
+import Idris.Pretty
 import Idris.Resugar
 import Idris.Syntax
 
@@ -18,6 +19,7 @@ import Data.Maybe
 import Libraries.Data.NameMap
 import Data.Strings
 import Libraries.Data.String.Extra
+import Libraries.Text.PrettyPrint.Prettyprinter.Doc
 
 %hide Data.Strings.lines
 %hide Data.Strings.lines'
@@ -55,16 +57,16 @@ addDocStringNS ns n_in doc
 export
 getDocsForPrimitive : {auto c : Ref Ctxt Defs} ->
                       {auto s : Ref Syn SyntaxInfo} ->
-                      Constant -> Core (List String)
+                      Constant -> Core (Doc IdrisAnn)
 getDocsForPrimitive constant = do
     let (_, type) = checkPrim EmptyFC constant
     let typeString = show constant ++ " : " ++ show !(resugar [] type)
-    pure [typeString ++ "\n\tPrimitive"]
+    pure $ pretty typeString <+> hardline <+> indent 8 "Primitive"
 
 export
 getDocsForName : {auto c : Ref Ctxt Defs} ->
                  {auto s : Ref Syn SyntaxInfo} ->
-                 FC -> Name -> Core (List String)
+                 FC -> Name -> Core (Doc IdrisAnn)
 getDocsForName fc n
     = do syn <- get Syn
          defs <- get Ctxt
@@ -72,22 +74,31 @@ getDocsForName fc n
              | _ => undefinedName fc n
          let ns@(_ :: _) = concatMap (\n => lookupName n (docstrings syn))
                                      (map fst all)
-             | [] => pure ["No documentation for " ++ show n]
-         traverse showDoc ns
+             | [] => pure $ pretty ("No documentation for " ++ show n)
+         hardlines <$> traverse showDoc ns
   where
-    addNL : String -> String
-    addNL str = if trim str == "" then "" else str ++ "\n"
+    indent : Doc IdrisAnn -> Doc IdrisAnn
+    indent Empty = Empty
+    indent doc = hardline <+> Doc.indent 8 doc
 
-    indent : String -> String
-    indent str = unlines $ map ("\t" ++) (forget $ lines str)
+    isEmpty : Doc IdrisAnn -> Bool
+    isEmpty Empty = True
+    isEmpty (Text _ "") = True
+    isEmpty _ = False
 
-    showTotal : Name -> Totality -> String
+    hardlines : List (Doc IdrisAnn) -> Doc IdrisAnn
+    hardlines = concatWith (\a, b => a <+> hardline <+> b) . filter (not . isEmpty)
+
+    paragraphs : List (Doc IdrisAnn) -> Doc IdrisAnn
+    paragraphs = concatWith (\a, b => a <+> hardline <+> hardline <+> b) . filter (not . isEmpty)
+
+    showTotal : Name -> Totality -> Doc IdrisAnn
     showTotal n tot
         = case isTerminating tot of
-               Unchecked => ""
-               _ => "\nTotality: " ++ show tot
+               Unchecked => neutral
+               _ => header "Totality:" <++> pretty (show tot)
 
-    getConstructorDoc : Name -> Core (Maybe String)
+    getConstructorDoc : Name -> Core (Maybe (Doc IdrisAnn))
     getConstructorDoc con
         = do defs <- get Ctxt
              Just def <- lookupCtxtExact con (gamma defs)
@@ -96,57 +107,57 @@ getDocsForName fc n
              let [(n, str)] = lookupName con (docstrings syn)
                   | _ => pure Nothing
              ty <- normaliseHoles defs [] (type def)
-             pure (Just (nameRoot n ++ " : " ++ show !(resugar [] ty)
-                          ++ "\n" ++ addNL (indent str)))
+             pure $ (Just (pretty (nameRoot n ++ " : " ++ show !(resugar [] ty))
+                           <+> (indent (pretty str))))
 
-    getImplDoc : Name -> Core (Maybe String)
+    getImplDoc : Name -> Core (Maybe (Doc IdrisAnn))
     getImplDoc n
         = do defs <- get Ctxt
              Just def <- lookupCtxtExact n (gamma defs)
                   | Nothing => pure Nothing
              ty <- normaliseHoles defs [] (type def)
-             pure $ Just $ addNL $ indent $ show !(resugar [] ty)
+             pure $ Just $ pretty $ show !(resugar [] ty)
 
-    getMethDoc : Method -> Core (Maybe String)
+    getMethDoc : Method -> Core (Maybe (Doc IdrisAnn))
     getMethDoc meth
         = do syn <- get Syn
              let [(n, str)] = lookupName meth.name (docstrings syn)
                   | _ => pure Nothing
-             pure (Just (nameRoot meth.name ++ " : " ++ show !(pterm meth.type)
-                          ++ maybe "" (\t => "\n" ++ show t) meth.totalReq
-                          ++ "\n" ++ addNL (indent str)))
+             pure (Just (pretty (nameRoot meth.name) <++> ":" <++> (pretty (show !(pterm meth.type)))
+                          <+> maybe neutral (\t => hardline <+> pretty (show t)) meth.totalReq
+                          <+> indent (pretty str)))
 
-    getIFaceDoc : (Name, IFaceInfo) -> Core String
+    getIFaceDoc : (Name, IFaceInfo) -> Core (Doc IdrisAnn)
     getIFaceDoc (n, iface)
         = do let params =
                 case params iface of
-                     [] => ""
-                     ps => "Parameters: " ++ showSep ", " (map show ps) ++ "\n"
+                     [] => neutral
+                     ps => header "Parameters:" <++> pretty (showSep ", " (map show ps))
              constraints <-
                 case parents iface of
-                     [] => pure ""
+                     [] => pure neutral
                      ps => do pts <- traverse pterm ps
-                              pure ("Constraints: " ++
-                                    showSep ", " (map show pts) ++ "\n")
+                              pure $ header "Constraints:"
+                                     <++> pretty (showSep ", " (map show pts))
              mdocs <- traverse getMethDoc (methods iface)
              let meths = case mapMaybe id mdocs of
-                              [] => ""
-                              docs => "\nMethods:\n" ++ concat docs
+                              [] => neutral
+                              docs => header "Methods:" <+> hardline <+> hardlines docs
              sd <- getSearchData fc False n
              idocs <- case hintGroups sd of
                            [] => pure []
                            ((_, tophs) :: _) => traverse getImplDoc tophs
              let insts = case mapMaybe id idocs of
-                              [] => ""
-                              docs => "\nImplementations:\n" ++ concat docs
-             pure (params ++ constraints ++ meths ++ insts)
+                              [] => neutral
+                              docs => header "Implementations:" <+> indent (hardlines docs)
+             pure $ paragraphs [params, constraints, meths, insts]
 
-    getExtra : Name -> GlobalDef -> Core String
+    getExtra : Name -> GlobalDef -> Core (Doc IdrisAnn)
     getExtra n d
         = do syn <- get Syn
              let [] = lookupName n (ifaces syn)
                  | [ifacedata] => getIFaceDoc ifacedata
-                 | _ => pure "" -- shouldn't happen, we've resolved ambiguity by now
+                 | _ => pure neutral -- shouldn't happen, we've resolved ambiguity by now
              case definition d of
                PMDef _ _ _ _ _
                    => pure (showTotal n (totality d))
@@ -154,34 +165,35 @@ getDocsForName fc n
                    => do cdocs <- traverse getConstructorDoc
                                            !(traverse toFullNames cons)
                          case mapMaybe id cdocs of
-                              [] => pure ""
-                              docs => pure $ "\nConstructors:\n" ++ concat docs
-               _ => pure ""
+                              [] => pure neutral
+                              docs => pure $ header "Constructors:" <+> hardline
+                                             <+> hardlines docs
+               _ => pure neutral
 
-    showDoc : (Name, String) -> Core String
+    showDoc : (Name, String) -> Core (Doc IdrisAnn)
     showDoc (n, str)
         = do defs <- get Ctxt
              Just def <- lookupCtxtExact n (gamma defs)
                   | Nothing => undefinedName fc n
              ty <- normaliseHoles defs [] (type def)
-             let doc = show !(aliasName n) ++ " : " ++ show !(resugar [] ty)
-                              ++ "\n" ++ addNL (indent str)
+             let doc = pretty (show !(aliasName n)) <++> ":" <++> pretty (show !(resugar [] ty))
+                       <+> indent (pretty str)
              extra <- getExtra n def
-             pure (doc ++ extra)
+             pure $ paragraphs [doc, extra]
 
 export
 getDocsForPTerm : {auto c : Ref Ctxt Defs} ->
                   {auto s : Ref Syn SyntaxInfo} ->
-                  PTerm -> Core (List String)
+                  PTerm -> Core (Doc IdrisAnn)
 getDocsForPTerm (PRef fc name) = getDocsForName fc name
 getDocsForPTerm (PPrimVal _ constant) = getDocsForPrimitive constant
-getDocsForPTerm (PType _) = pure ["Type : Type\n\tThe type of all types is Type. The type of Type is Type."]
-getDocsForPTerm (PString _ _) = pure ["String Literal\n\tDesugars to a fromString call"]
-getDocsForPTerm (PList _ _) = pure ["List Literal\n\tDesugars to (::) and Nil"]
-getDocsForPTerm (PPair _ _ _) = pure ["Pair Literal\n\tDesugars to MkPair or Pair"]
-getDocsForPTerm (PDPair _ _ _ _) = pure ["Dependant Pair Literal\n\tDesugars to MkDPair or DPair"]
-getDocsForPTerm (PUnit _) = pure ["Unit Literal\n\tDesugars to MkUnit or Unit"]
-getDocsForPTerm pterm = pure ["Docs not implemented for " ++ show pterm ++ " yet"]
+getDocsForPTerm (PType _) = pure "Type : Type\n\tThe type of all types is Type. The type of Type is Type."
+getDocsForPTerm (PString _ _) = pure "String Literal\n\tDesugars to a fromString call"
+getDocsForPTerm (PList _ _) = pure "List Literal\n\tDesugars to (::) and Nil"
+getDocsForPTerm (PPair _ _ _) = pure "Pair Literal\n\tDesugars to MkPair or Pair"
+getDocsForPTerm (PDPair _ _ _ _) = pure "Dependant Pair Literal\n\tDesugars to MkDPair or DPair"
+getDocsForPTerm (PUnit _) = pure "Unit Literal\n\tDesugars to MkUnit or Unit"
+getDocsForPTerm pterm = pure $ pretty ("Docs not implemented for " ++ show pterm ++ " yet")
 
 summarise : {auto c : Ref Ctxt Defs} ->
             {auto s : Ref Syn SyntaxInfo} ->
