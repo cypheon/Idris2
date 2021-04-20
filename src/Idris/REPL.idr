@@ -844,7 +844,7 @@ process (TypeSearch searchTerm)
               filterM (\def => equivTypes def.type ty') allDefs
          put Ctxt defs
          doc <- traverse (docsOrSignature replFC) $ (.fullname) <$> filteredDefs
-         pure $ Printed $ vsep doc
+         pure $ Printed $ concatWith (\a, b => a <+> hardline <+> hardline <+> b) doc
 process (Missing n)
     = do defs <- get Ctxt
          case !(lookupCtxtName n (gamma defs)) of
