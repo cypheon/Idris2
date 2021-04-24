@@ -158,14 +158,6 @@ unload fc _ f [] = pure f
 -- only outermost LApp must be lazy as rest will be closures
 unload fc lazy f (a :: as) = unload fc Nothing (LApp fc lazy f a) as
 
-total
-lengthDistributesOverAppend
-  : (xs, ys : List a)
-  -> length (xs ++ ys) = length xs + length ys
-lengthDistributesOverAppend [] ys = Refl
-lengthDistributesOverAppend (x :: xs) ys =
-  cong S $ lengthDistributesOverAppend xs ys
-
 record Used (vars : List Name) where
   constructor MkUsed
   used : Vect (length vars) Bool
@@ -173,13 +165,6 @@ record Used (vars : List Name) where
 initUsed : {vars : _} -> Core (Used vars)
 initUsed {vars} = do
   pure $ MkUsed (replicate (length vars) False)
-
-weakenUsed : {vars : _} ->
-               (bound : List Name) ->
-               (Used vars) ->
-               Core (Used (bound ++ vars))
-weakenUsed {vars} bound (MkUsed used) = do
-  pure $ MkUsed (rewrite (lengthDistributesOverAppend bound vars) in ((replicate (length bound) False) ++ used))
 
 contractUsed : {vars : _} ->
                (Used (x::vars)) ->
@@ -248,22 +233,16 @@ mutual
   makeLam fc bound (CLam _ x sc') = makeLam fc {doLazyAnnots} {lazy} (x :: bound) sc'
   makeLam {vars} fc bound sc
       = do scl <- liftExp {doLazyAnnots} {lazy} sc
+           -- Find out which variables aren't used in the new definition, and
+           -- do not abstract over them in the new definition.
            scUsedL <- usedVars scl
-           unused <- getUnused scUsedL
-           -- TODO: replace `believe_me`s with real proof
-           let (_, uvarsI) = Vect.splitAt (length bound) (believe_me unused)
-               uvars = the (Vect (length vars) Bool) uvarsI
-               unused' = rewrite lengthDistributesOverAppend bound vars in (replicate (length bound) False) ++ uvars
-               scl' = dropUnused unused' scl
-               prf = sym $ the (dropped (bound ++ vars) unused' = bound ++ dropped vars uvars) $ believe_me True
+           unusedContracted <- contractUsedMany {remove=bound} scUsedL
+           unused <- getUnused unusedContracted
+           let scl' = dropUnused {outer=bound} unused scl
            n <- genName
            ldefs <- get Lifts
-           put Lifts (record { defs $= ((n, MkLFun (dropped vars uvars) bound (rewrite prf in scl')) ::) } ldefs)
-           -- TODO: an optimisation here would be to spot which variables
-           -- aren't used in the new definition, and not abstract over them
-           -- in the new definition. Given that we have to do some messing
-           -- about with indices anyway, it's probably not costly to do.
-           pure $ LUnderApp fc n (length bound) (allVars fc vars uvars)
+           put Lifts (record { defs $= ((n, MkLFun (dropped vars unused) bound scl') ::) } ldefs)
+           pure $ LUnderApp fc n (length bound) (allVars fc vars unused)
     where
         allPrfs : (vs : List Name) -> (unused : Vect (length vs) Bool) -> List (Var vs)
         allPrfs [] _ = []
@@ -382,30 +361,34 @@ mutual
 
   dropIdx : {vars : _} ->
             {idx : _} ->
+            (outer : List Name) ->
             (unused : Vect (length vars) Bool) ->
-            (0 p : IsVar x idx vars) ->
-            Var (dropped vars unused)
-  dropIdx (False::_) First = MkVar First
-  dropIdx (True::_) First = assert_total $ idris_crash "impossible"
-  dropIdx (False::rest) (Later p) = Var.later $ dropIdx rest p
-  dropIdx (True::rest) (Later p) = dropIdx rest p
+            (0 p : IsVar x idx (outer ++ vars)) ->
+            Var (outer ++ (dropped vars unused))
+  dropIdx [] (False::_) First = MkVar First
+  dropIdx [] (True::_) First = assert_total $ idris_crash "referenced var cannot be unused"
+  dropIdx [] (False::rest) (Later p) = Var.later $ dropIdx [] rest p
+  dropIdx [] (True::rest) (Later p) = dropIdx [] rest p
+  dropIdx (_::xs) unused First = MkVar First
+  dropIdx (_::xs) unused (Later p) = Var.later $ dropIdx xs unused p
 
   dropUnused : {vars : _} ->
                {auto l : Ref Lifts LDefs} ->
+               {outer : List Name} ->
                (unused : Vect (length vars) Bool) ->
-               (l : Lifted vars) ->
-               Lifted (dropped vars unused)
+               (l : Lifted (outer ++ vars)) ->
+               Lifted (outer ++ (dropped vars unused))
   dropUnused _ (LPrimVal fc val) = LPrimVal fc val
   dropUnused _ (LErased fc) = LErased fc
   dropUnused _ (LCrash fc msg) = LCrash fc msg
-  dropUnused unused (LLocal fc p) =
-    let (MkVar p') = dropIdx unused p in LLocal fc p'
+  dropUnused {outer} unused (LLocal fc p) =
+    let (MkVar p') = dropIdx outer unused p in LLocal fc p'
   dropUnused unused (LCon fc n tag args) =
     let args' = map (dropUnused unused) args in
         LCon fc n tag args'
-  dropUnused unused (LLet fc n val sc) =
+  dropUnused {outer} unused (LLet fc n val sc) =
     let val' = dropUnused unused val
-        sc' = dropUnused (False::unused) sc in
+        sc' = dropUnused {outer=n::outer} (unused) sc in
         LLet fc n val' sc'
   dropUnused unused (LApp fc lazy c arg) =
     let c' = dropUnused unused c
@@ -423,22 +406,21 @@ mutual
   dropUnused unused (LUnderApp fc n miss args) =
     let args' = map (dropUnused unused) args in
         LUnderApp fc n miss args'
-  dropUnused {vars} unused (LConCase fc sc alts def) =
+  dropUnused {vars} {outer} unused (LConCase fc sc alts def) =
     let alts' = map dropConCase alts in
         LConCase fc (dropUnused unused sc) alts' (map (dropUnused unused) def)
     where
-      dropConCase : LiftedConAlt vars ->
-                    LiftedConAlt (dropped vars unused)
+      dropConCase : LiftedConAlt (outer ++ vars) ->
+                    LiftedConAlt (outer ++ (dropped vars unused))
       dropConCase (MkLConAlt n t args sc) =
-        let extendedUnused = (replicate (length args) False) ++ unused in
-        -- TODO: replace `believe_me` with real proof
-        MkLConAlt n t args (believe_me $ dropUnused (rewrite lengthDistributesOverAppend args vars in extendedUnused) sc)
-  dropUnused unused (LConstCase fc sc alts def) =
+        let droppedSc = dropUnused {vars=vars} {outer=args++outer} unused (rewrite sym $ appendAssociative args outer vars in sc) in
+        MkLConAlt n t args (rewrite appendAssociative args outer (dropped vars unused) in droppedSc)
+  dropUnused {vars} {outer} unused (LConstCase fc sc alts def) =
     let alts' = map dropConstCase alts in
         LConstCase fc (dropUnused unused sc) alts' (map (dropUnused unused) def)
     where
-      dropConstCase : LiftedConstAlt vars ->
-                      LiftedConstAlt (dropped vars unused)
+      dropConstCase : LiftedConstAlt (outer ++ vars) ->
+                      LiftedConstAlt (outer ++ (dropped vars unused))
       dropConstCase (MkLConstAlt c val) = MkLConstAlt c (dropUnused unused val)
 
 export
