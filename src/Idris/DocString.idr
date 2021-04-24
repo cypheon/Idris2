@@ -107,8 +107,10 @@ getDocsForName fc n
              let [(n, str)] = lookupName con (docstrings syn)
                   | _ => pure Nothing
              ty <- normaliseHoles defs [] (type def)
-             pure $ (Just (pretty (nameRoot n ++ " : " ++ show !(resugar [] ty))
-                           <+> (indent (pretty str))))
+             -- TODO: annotate (DConName n)
+             pure $ Just $
+               annotate (Decl n) (annotate (TermName n) (pretty (nameRoot n)) <++> ":" <++> prettyTerm !(resugar [] ty))
+               <+> annotate Documentation (indent (pretty str))
 
     getImplDoc : Name -> Core (Maybe (Doc IdrisAnn))
     getImplDoc n
@@ -116,14 +118,14 @@ getDocsForName fc n
              Just def <- lookupCtxtExact n (gamma defs)
                   | Nothing => pure Nothing
              ty <- normaliseHoles defs [] (type def)
-             pure $ Just $ pretty $ show !(resugar [] ty)
+             pure $ Just $ annotate (Decl n) $ prettyTerm !(resugar [] ty)
 
     getMethDoc : Method -> Core (Maybe (Doc IdrisAnn))
     getMethDoc meth
         = do syn <- get Syn
              let [(n, str)] = lookupName meth.name (docstrings syn)
                   | _ => pure Nothing
-             pure (Just (pretty (nameRoot meth.name) <++> ":" <++> (pretty (show !(pterm meth.type)))
+             pure (Just (annotate (Decl meth.name) (pretty (nameRoot meth.name) <++> ":" <++> (prettyTerm !(pterm meth.type)))
                           <+> maybe neutral (\t => hardline <+> pretty (show t)) meth.totalReq
                           <+> indent (pretty str)))
 
@@ -142,14 +144,14 @@ getDocsForName fc n
              mdocs <- traverse getMethDoc (methods iface)
              let meths = case mapMaybe id mdocs of
                               [] => neutral
-                              docs => header "Methods:" <+> hardline <+> hardlines docs
+                              docs => header "Methods:" <+> hardline <+> annotate Declarations (hardlines docs)
              sd <- getSearchData fc False n
              idocs <- case hintGroups sd of
                            [] => pure []
                            ((_, tophs) :: _) => traverse getImplDoc tophs
              let insts = case mapMaybe id idocs of
                               [] => neutral
-                              docs => header "Implementations:" <+> indent (hardlines docs)
+                              docs => header "Implementations:" <+> indent (annotate Declarations (hardlines docs))
              pure $ paragraphs [params, constraints, meths, insts]
 
     getExtra : Name -> GlobalDef -> Core (Doc IdrisAnn)
@@ -167,7 +169,7 @@ getDocsForName fc n
                          case mapMaybe id cdocs of
                               [] => pure neutral
                               docs => pure $ header "Constructors:" <+> hardline
-                                             <+> hardlines docs
+                                             <+> annotate Declarations (hardlines docs)
                _ => pure neutral
 
     showDoc : (Name, String) -> Core (Doc IdrisAnn)
@@ -176,10 +178,12 @@ getDocsForName fc n
              Just def <- lookupCtxtExact n (gamma defs)
                   | Nothing => undefinedName fc n
              ty <- normaliseHoles defs [] (type def)
-             let doc = pretty (show !(aliasName n)) <++> ":" <++> pretty (show !(resugar [] ty))
-                       <+> indent (pretty str)
-             extra <- getExtra n def
-             pure $ paragraphs [doc, extra]
+             let term = annotate (Decl n) (annotate (TermName n) (pretty (show !(aliasName n))) <++> ":" <++> prettyTerm !(resugar [] ty))
+             let doc = indent (pretty str)
+             let extra = case !(getExtra n def) of
+                              Empty => Empty
+                              s => hardline <+> hardline <+> s
+             pure $ term <+> annotate Documentation (doc <+> extra)
 
 export
 getDocsForPTerm : {auto c : Ref Ctxt Defs} ->

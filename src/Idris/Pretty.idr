@@ -27,6 +27,10 @@ data IdrisAnn
   | Pragma
   | Link Name
   | Header
+  | Declarations
+  | Decl Name
+  | TermName Name
+  | Documentation
 
 export
 colorAnn : IdrisAnn -> AnsiStyle
@@ -40,6 +44,10 @@ colorAnn Pragma = color BrightMagenta
 colorAnn Meta = color Green
 colorAnn (Link _) = []
 colorAnn Header = bold
+colorAnn Declarations = []
+colorAnn (Decl _) = []
+colorAnn Documentation = []
+colorAnn (TermName _) = []
 
 export
 error : Doc IdrisAnn -> Doc IdrisAnn
