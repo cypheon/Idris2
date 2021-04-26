@@ -178,22 +178,20 @@ contractUsedMany : {vars : _} ->
 contractUsedMany {remove=[]} x = pure x
 contractUsedMany {remove=(r::rs)} x = contractUsedMany {remove=rs} !(contractUsed x)
 
-natFin : {vars : _} ->
-         (idx : Nat) ->
-         (0 prf : IsVar x idx vars) ->
-         Fin (length vars)
-natFin Z First = FZ
-natFin (S x) First impossible
-natFin (S x) (Later l) = FS (natFin x l)
-
 markUsed : {vars : _} ->
            (idx : Nat) ->
            {0 prf : IsVar x idx vars} ->
            Used vars ->
            Core (Used vars)
 markUsed {vars} {prf} idx (MkUsed us) = do
-  let newUsed = replaceAt (natFin idx prf) True us
+  let newUsed = replaceAt (finIdx prf) True us
   pure $ MkUsed newUsed
+    where
+    finIdx : {vars : _} -> {idx : _} ->
+               (0 prf : IsVar x idx vars) ->
+               Fin (length vars)
+    finIdx {idx=Z} First = FZ
+    finIdx {idx=S x} (Later l) = FS (finIdx l)
 
 mergeUsed : {vars : List Name} ->
            Used vars ->
@@ -211,9 +209,6 @@ getUnused {vars} (MkUsed uv) = pure $ getUnused' uv
   where
     getUnused' : Vect (length vars) Bool -> Vect (length vars) Bool
     getUnused' v = map not v
-
-foldlCore : (Foldable t) => (f : a -> b -> Core a) -> (init : a) -> t b -> Core a
-foldlCore f i = foldl (\ma, b => ma >>= flip f b) (pure i)
 
 total
 dropped : (vars : List Name) ->
@@ -311,10 +306,10 @@ mutual
     markUsed {prf} idx used
   usedVars (LAppName fc lazy n args) = do
     allUsed <- traverse usedVars args
-    foldlCore mergeUsed !(initUsed) allUsed
+    foldlC mergeUsed !(initUsed) allUsed
   usedVars (LUnderApp fc n miss args) = do
     allUsed <- traverse usedVars args
-    foldlCore mergeUsed !(initUsed) allUsed
+    foldlC mergeUsed !(initUsed) allUsed
   usedVars (LApp fc lazy c arg) = do
     mergeUsed !(usedVars c) !(usedVars arg)
   usedVars (LLet fc x val sc) = do
@@ -323,18 +318,18 @@ mutual
     mergeUsed !(contractUsed inner) valUsed
   usedVars (LCon fc n tag args) = do
     allUsed <- traverse usedVars args
-    foldlCore mergeUsed !(initUsed) allUsed
+    foldlC mergeUsed !(initUsed) allUsed
   usedVars (LOp fc lazy fn args) = do
     allUsed <- traverseVect usedVars args
-    foldlCore mergeUsed !(initUsed) allUsed
+    foldlC mergeUsed !(initUsed) allUsed
   usedVars (LExtPrim fc lazy fn args) = do
     allUsed <- traverse usedVars args
-    foldlCore mergeUsed !(initUsed) allUsed
+    foldlC mergeUsed !(initUsed) allUsed
   usedVars (LConCase fc sc alts def) = do
       scUsed <- usedVars sc
       defUsed <- traverseOpt usedVars def
       altsUsed <- traverse usedConAlt alts
-      mergedAlts <- foldlCore mergeUsed !(initUsed) altsUsed
+      mergedAlts <- foldlC mergeUsed !(initUsed) altsUsed
       scDefUsed <- mergeUsed scUsed (maybe !(initUsed) id defUsed)
       mergeUsed scDefUsed mergedAlts
     where
@@ -347,7 +342,7 @@ mutual
       scUsed <- usedVars sc
       defUsed <- traverseOpt usedVars def
       altsUsed <- traverse usedConstAlt alts
-      mergedAlts <- foldlCore mergeUsed !(initUsed) altsUsed
+      mergedAlts <- foldlC mergeUsed !(initUsed) altsUsed
       scDefUsed <- mergeUsed scUsed (maybe !(initUsed) id defUsed)
       mergeUsed scDefUsed mergedAlts
     where
@@ -366,7 +361,8 @@ mutual
             (0 p : IsVar x idx (outer ++ vars)) ->
             Var (outer ++ (dropped vars unused))
   dropIdx [] (False::_) First = MkVar First
-  dropIdx [] (True::_) First = assert_total $ idris_crash "referenced var cannot be unused"
+  dropIdx [] (True::_) First = assert_total $
+    idris_crash "INTERNAL ERROR: Referenced variable marked as unused"
   dropIdx [] (False::rest) (Later p) = Var.later $ dropIdx [] rest p
   dropIdx [] (True::rest) (Later p) = dropIdx [] rest p
   dropIdx (_::xs) unused First = MkVar First
@@ -413,7 +409,8 @@ mutual
       dropConCase : LiftedConAlt (outer ++ vars) ->
                     LiftedConAlt (outer ++ (dropped vars unused))
       dropConCase (MkLConAlt n t args sc) =
-        let droppedSc = dropUnused {vars=vars} {outer=args++outer} unused (rewrite sym $ appendAssociative args outer vars in sc) in
+        let sc' = (rewrite sym $ appendAssociative args outer vars in sc)
+            droppedSc = dropUnused {vars=vars} {outer=args++outer} unused sc' in
         MkLConAlt n t args (rewrite appendAssociative args outer (dropped vars unused) in droppedSc)
   dropUnused {vars} {outer} unused (LConstCase fc sc alts def) =
     let alts' = map dropConstCase alts in
