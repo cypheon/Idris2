@@ -30,19 +30,12 @@ import System.Info
 
 %default covering
 
-pathLookup : IO String
-pathLookup
-    = do path <- idrisGetEnv "PATH"
-         let pathList = forget $ split (== pathSeparator) $ fromMaybe "/usr/bin:/usr/local/bin" path
-         let candidates = [p ++ "/" ++ x | p <- pathList,
-                                           x <- ["chez", "chezscheme9.5", "scheme", "scheme.exe"]]
-         e <- firstExists candidates
-         pure $ fromMaybe "/usr/bin/env scheme" e
-
 findChez : IO String
 findChez
-    = do Just chez <- idrisGetEnv "CHEZ" | Nothing => pathLookup
-         pure chez
+    = do Nothing <- idrisGetEnv "CHEZ"
+            | Just chez => pure chez
+         path <- pathLookup ["chez", "chezscheme9.5", "scheme"]
+         pure $ fromMaybe "/usr/bin/env scheme" path
 
 -- Given the chez compiler directives, return a list of pairs of:
 --   - the library file name
@@ -459,7 +452,7 @@ compileExpr makeitso c tmpDir outputDir tm outfile
          let outSoAbs = cwd </> outputDir </> outSoFile
          chez <- coreLift $ findChez
          compileToSS c appDirGen tm outSsAbs
-         logTime "Make SO" $ when makeitso $ compileToSO chez appDirGen outSsAbs
+         logTime "++ Make SO" $ when makeitso $ compileToSO chez appDirGen outSsAbs
          let outShRel = outputDir </> outfile
          if isWindows
             then makeShWindows chez outShRel appDirRel (if makeitso then outSoFile else outSsFile)
