@@ -409,6 +409,7 @@ data REPLOpt : Type where
      EvalMode : REPLEval -> REPLOpt
      Editor : String -> REPLOpt
      CG : String -> REPLOpt
+     Profile : Bool -> REPLOpt
 
 export
 Show REPLOpt where
@@ -418,6 +419,7 @@ Show REPLOpt where
   show (EvalMode mod) = "eval = " ++ show mod
   show (Editor editor) = "editor = " ++ show editor
   show (CG str) = "cg = " ++ str
+  show (Profile p) = "profile = " ++ show p
 
 export
 Pretty REPLOpt where
@@ -427,6 +429,7 @@ Pretty REPLOpt where
   pretty (EvalMode mod) = pretty "eval" <++> equals <++> pretty mod
   pretty (Editor editor) = pretty "editor" <++> equals <++> pretty editor
   pretty (CG str) = pretty "cg" <++> equals <++> pretty str
+  pretty (Profile p) = pretty "profile" <++> equals <++> pretty p
 
 public export
 data EditCmd : Type where
@@ -446,6 +449,7 @@ data REPLCmd : Type where
      NewDefn : List PDecl -> REPLCmd
      Eval : PTerm -> REPLCmd
      Check : PTerm -> REPLCmd
+     CheckWithImplicits : PTerm -> REPLCmd
      PrintDef : Name -> REPLCmd
      Reload : REPLCmd
      Load : String -> REPLCmd

@@ -1565,6 +1565,8 @@ setOption set
          pure (ShowNamespace set)
   <|> do exactIdent "showtypes"
          pure (ShowTypes set)
+  <|> do exactIdent "profile"
+         pure (Profile set)
   <|> if set then setVarOption else fatalError "Unrecognised option"
 
 replCmd : List String -> Rule ()
@@ -1863,6 +1865,7 @@ loggingArgCmd parseCmd command doc = (names, Args [StringArg, NumberArg], doc, p
 parserCommandsForHelp : CommandTable
 parserCommandsForHelp =
   [ exprArgCmd (ParseREPLCmd ["t", "type"]) Check "Check the type of an expression"
+  , exprArgCmd (ParseREPLCmd ["ti"]) CheckWithImplicits "Check the type of an expression, showing implicit arguments"
   , nameArgCmd (ParseREPLCmd ["printdef"]) PrintDef "Show the definition of a function"
   , exprArgCmd (ParseREPLCmd ["s", "search"]) TypeSearch "Search for values by type"
   , nameArgCmd (ParseIdentCmd "di") DebugInfo "Show debugging information for a name"
@@ -1873,6 +1876,7 @@ parserCommandsForHelp =
   , stringArgCmd (ParseREPLCmd ["sh"]) RunShellCommand "Run a shell command"
   , optArgCmd (ParseIdentCmd "set") SetOpt True "Set an option"
   , optArgCmd (ParseIdentCmd "unset") SetOpt False "Unset an option"
+  , noArgCmd (ParseREPLCmd ["opts"]) GetOpts "Show current options settings"
   , compileArgsCmd (ParseREPLCmd ["c", "compile"]) Compile "Compile to an executable"
   , exprArgCmd (ParseIdentCmd "exec") Exec "Compile to an executable and run"
   , stringArgCmd (ParseIdentCmd "directive") CGDirective "Set a codegen-specific directive"
