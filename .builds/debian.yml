@@ -1,7 +1,7 @@
 image: debian/stable
 
 sources:
-  - https://github.com/cypheon/Idris2.git
+  - https://git.sr.ht/~cypheon/Idris2
 
 packages:
   - chezscheme
