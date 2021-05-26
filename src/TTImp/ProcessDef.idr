@@ -445,7 +445,8 @@ checkClause {vars} mult vis totreq hashit n opts nest env (PatClause fc lhs_in r
          log "declare.def.clause" 5 $ "Checking RHS " ++ show rhs
          logEnv "declare.def.clause" 5 "In env" env'
 
-         rhstm <- wrapErrorC opts (InRHS fc !(getFullName (Resolved n))) $
+         rhstm <- logTime ("+++ Check RHS " ++ show fc) $
+                    wrapErrorC opts (InRHS fc !(getFullName (Resolved n))) $
                        checkTermSub n rhsMode opts nest' env' env sub' rhs (gnf env' lhsty')
          clearHoleLHS
 
@@ -595,7 +596,7 @@ checkClause {vars} mult vis totreq hashit n opts nest env
       let eqName = NS builtinNS (UN "Equal")
       Just (TCon t ar _ _ _ _ _ _) <- lookupDefExact eqName (gamma defs)
         | _ => throw (InternalError "Cannot find builtin Equal")
-      let eqTyCon = Ref vfc (TyCon t ar) eqName
+      let eqTyCon = Ref vfc (TyCon t ar) !(toResolvedNames eqName)
 
       let wargn : Name
           wargn = MN "warg" 0
@@ -628,7 +629,7 @@ checkClause {vars} mult vis totreq hashit n opts nest env
     -- If it's 'KeepCons/SubRefl' in 'outprf', that means it was in the outer
     -- environment so we need to keep it in the same place in the 'with'
     -- function. Hence, turn it to KeepCons whatever
-    keepOldEnv : {vs : _} ->
+    keepOldEnv : {0 outer : _} -> {vs : _} ->
                  (outprf : SubVars outer vs) -> SubVars vs' vs ->
                  (vs'' : List Name ** SubVars vs'' vs)
     keepOldEnv {vs} SubRefl p = (vs ** SubRefl)
@@ -753,7 +754,22 @@ mkRunTime fc n
            ignore $ addDef n $
                        record { definition = PMDef r rargs tree_ct tree_rt pats
                               } gdef
+           -- If it's a case block, and not already set as inlinable,
+           -- check if it's safe to inline
+           when (caseName !(toFullNames n) && noInline (flags gdef)) $
+             do inl <- canInlineCaseBlock n
+                when inl $ setFlag fc n Inline
   where
+    noInline : List DefFlag -> Bool
+    noInline (Inline :: _) = False
+    noInline (x :: xs) = noInline xs
+    noInline _ = True
+
+    caseName : Name -> Bool
+    caseName (CaseBlock _ _) = True
+    caseName (NS _ n) = caseName n
+    caseName _ = False
+
     mkCrash : {vars : _} -> String -> Term vars
     mkCrash msg
        = apply fc (Ref fc Func (NS builtinNS (UN "idris_crash")))
@@ -838,6 +854,7 @@ processDef opts nest env fc n_in cs_in
 
          -- Dynamically rebind default totality requirement to this function's totality requirement
          -- and use this requirement when processing `with` blocks
+         log "declare.def" 5 $ "Traversing clauses of " ++ show n ++ " with mult " ++ show mult
          let treq = fromMaybe !getDefaultTotalityOption (findSetTotal (flags gdef))
          cs <- withTotality treq $
                traverse (checkClause mult (visibility gdef) treq
@@ -968,7 +985,9 @@ processDef opts nest env fc n_in cs_in
                     Core Covering
     checkCoverage n ty mult cs
         = do covcs' <- traverse getClause cs -- Make stand in LHS for impossible clauses
-             log "declare.def" 5 $ "Using clauses :" ++ show !(traverse toFullNames covcs')
+             log "declare.def" 5 $ unlines
+               $ "Using clauses :"
+               :: map (("  " ++) . show) !(traverse toFullNames covcs')
              let covcs = mapMaybe id covcs'
              (_ ** (ctree, _)) <-
                  getPMDef fc (CompileTime mult) (Resolved n) ty covcs

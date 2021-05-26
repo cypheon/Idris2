@@ -271,7 +271,7 @@ record GlobalDef where
   specArgs : List Nat -- arguments to specialise by
   inferrable : List Nat -- arguments which can be inferred from elsewhere in the type
   multiplicity : RigCount
-  vars : List Name -- environment name is defined in
+  localVars : List Name -- environment name is defined in
   visibility : Visibility
   totality : Totality
   flags : List DefFlag
@@ -311,7 +311,8 @@ data Arr : Type where
 -- binary blob yet, so decode it first time
 public export
 data ContextEntry : Type where
-     Coded : Binary -> ContextEntry
+     Coded : Namespace -> -- namespace for decoding into, with restoreNS
+             Binary -> ContextEntry
      Decoded : GlobalDef -> ContextEntry
 
 data PossibleName : Type where
@@ -492,8 +493,7 @@ lookupCtxtExactI (Resolved idx) ctxt
            Just val =>
                  pure $ returnDef (inlineOnly ctxt) idx !(decode ctxt idx True val)
            Nothing =>
-              do let a = content ctxt
-                 arr <- get Arr
+              do arr <- get Arr @{content ctxt}
                  Just def <- coreLift (readArray arr idx)
                       | Nothing => pure Nothing
                  pure $ returnDef (inlineOnly ctxt) idx !(decode ctxt idx True def)
@@ -512,8 +512,7 @@ lookupCtxtExact (Resolved idx) ctxt
                         Nothing => pure Nothing
                         Just (_, def) => pure (Just def)
            Nothing =>
-              do let a = content ctxt
-                 arr <- get Arr
+              do arr <- get Arr @{content ctxt}
                  Just res <- coreLift (readArray arr idx)
                       | Nothing => pure Nothing
                  def <- decode ctxt idx True res
@@ -624,7 +623,7 @@ newDef fc n rig vars ty vis def
         , specArgs = []
         , inferrable = []
         , multiplicity = rig
-        , vars = vars
+        , localVars = vars
         , visibility = vis
         , totality = unchecked
         , flags = []
@@ -677,12 +676,19 @@ record NatBuiltin where
     zero : Name
     succ : Name
 
-||| Record containing information about a natToInteger function.
+||| Record containing information about a NatToInteger function.
 public export
 record NatToInt where
     constructor MkNatToInt
-    arity : Nat -- total number of arguments
-    natIdx : Fin arity -- index into arguments of the 'Nat'-like argument
+    natToIntArity : Nat -- total number of arguments
+    natIdx : Fin natToIntArity -- index into arguments of the 'Nat'-like argument
+
+||| Record containing information about a IntegerToNat function.
+public export
+record IntToNat where
+    constructor MkIntToNat
+    intToNatArity : Nat
+    intIdx : Fin intToNatArity
 
 ||| Rewrite rules for %builtin pragmas
 ||| Seperate to 'Transform' because it must also modify case statements
@@ -690,11 +696,11 @@ record NatToInt where
 public export
 record BuiltinTransforms where
     constructor MkBuiltinTransforms
-    -- Nat
     natTyNames : NameMap NatBuiltin -- map from Nat-like names to their constructors
     natZNames : NameMap ZERO -- set of Z-like names
     natSNames : NameMap SUCC -- set of S-like names
-    natToIntegerFns : NameMap NatToInt -- set of functions to transform to `believe_me`
+    natToIntegerFns : NameMap NatToInt -- set of functions to transform to `id`
+    integerToNatFns : NameMap IntToNat -- set of functions to transform to `max 0`
 
 -- TODO: After next release remove nat from here and use %builtin pragma instead
 initBuiltinTransforms : BuiltinTransforms
@@ -707,6 +713,7 @@ initBuiltinTransforms =
         , natZNames = singleton zero MkZERO
         , natSNames = singleton succ MkSUCC
         , natToIntegerFns = empty
+        , integerToNatFns = empty
         }
 
 export
@@ -785,7 +792,6 @@ HasNames (Term vars) where
 
 export
 HasNames Pat where
-
   full gam (PAs fc n p)
      = [| PAs (pure fc) (full gam n) (full gam p) |]
   full gam (PCon fc n i ar ps)
@@ -911,6 +917,31 @@ HasNames Def where
   resolved gam (Guess tm b cs)
       = pure $ Guess !(resolved gam tm) b cs
   resolved gam t = pure t
+
+export
+StripNamespace Def where
+  trimNS ns (PMDef i args ct rt pats)
+      = PMDef i args (trimNS ns ct) rt (map trimNSpat pats)
+    where
+      trimNSpat : (vs ** (Env Term vs, Term vs, Term vs)) ->
+                  (vs ** (Env Term vs, Term vs, Term vs))
+      trimNSpat (vs ** (env, lhs, rhs))
+          = (vs ** (env, trimNS ns lhs, trimNS ns rhs))
+  trimNS ns d = d
+
+  restoreNS ns (PMDef i args ct rt pats)
+      = PMDef i args (restoreNS ns ct) rt (map restoreNSpat pats)
+    where
+      restoreNSpat : (vs ** (Env Term vs, Term vs, Term vs)) ->
+                  (vs ** (Env Term vs, Term vs, Term vs))
+      restoreNSpat (vs ** (env, lhs, rhs))
+          = (vs ** (env, restoreNS ns lhs, restoreNS ns rhs))
+  restoreNS ns d = d
+
+export
+StripNamespace GlobalDef where
+  trimNS ns def = record { definition $= trimNS ns } def
+  restoreNS ns def = record { definition $= restoreNS ns } def
 
 HasNames (NameMap a) where
   full gam nmap
@@ -1141,6 +1172,15 @@ clearCtxt
     resetElab : Options -> Options
     resetElab = record { elabDirectives = defaultElab }
 
+export
+getFieldNames : Context -> Namespace -> List Name
+getFieldNames ctxt recNS
+  = let nms = resolvedAs ctxt in
+    keys $ flip filterBy nms $ \ n =>
+      case isRF n of
+        Nothing => False
+        Just (ns, field) => ns == recNS
+
 -- Find similar looking names in the context
 getSimilarNames : {auto c : Ref Ctxt Defs} -> Name -> Core (List String)
 getSimilarNames nm = case userNameRoot nm of
@@ -1288,10 +1328,10 @@ addDef n def
 
 export
 addContextEntry : {auto c : Ref Ctxt Defs} ->
-                  Name -> Binary -> Core Int
-addContextEntry n def
+                  Namespace -> Name -> Binary -> Core Int
+addContextEntry ns n def
     = do defs <- get Ctxt
-         (idx, gam') <- addEntry n (Coded def) (gamma defs)
+         (idx, gam') <- addEntry n (Coded ns def) (gamma defs)
          put Ctxt (record { gamma = gam' } defs)
          pure idx
 
@@ -1321,7 +1361,7 @@ addBuiltin n ty tot op
          , specArgs = []
          , inferrable = []
          , multiplicity = top
-         , vars = []
+         , localVars = []
          , visibility = Public
          , totality = tot
          , flags = [Inline]

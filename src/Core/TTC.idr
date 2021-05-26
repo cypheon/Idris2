@@ -261,8 +261,8 @@ mutual
   export
   {vars : _} -> TTC (Term vars) where
     toBuf b (Local {name} fc c idx y)
-        = if idx < 244
-             then do tag (12 + cast idx)
+        = if idx < 243
+             then do tag (13 + cast idx)
                      toBuf b c
              else do tag 0
                      toBuf b c
@@ -278,11 +278,14 @@ mutual
              toBuf b x;
              toBuf b bnd; toBuf b scope
     toBuf b (App fc fn arg)
-        = do tag 4;
-             toBuf b fn; toBuf b arg
---              let (fn, args) = getFnArgs (App fc fn arg)
---              toBuf b fn; -- toBuf b p;
---              toBuf b args
+        = do let (fn, args) = getFnArgs (App fc fn arg)
+             case args of
+                  [arg] => do tag 4
+                              toBuf b fn
+                              toBuf b arg
+                  args => do tag 12
+                             toBuf b fn
+                             toBuf b args
     toBuf b (As fc s as tm)
         = do tag 5;
              toBuf b as; toBuf b s; toBuf b tm
@@ -334,8 +337,11 @@ mutual
                        pure (PrimVal emptyFC c)
                10 => pure (Erased emptyFC False)
                11 => pure (TType emptyFC)
+               12 => do fn <- fromBuf b
+                        args <- fromBuf b
+                        pure (apply emptyFC fn args)
                idxp => do c <- fromBuf b
-                          let idx : Nat = fromInteger (cast (idxp - 12))
+                          let idx : Nat = fromInteger (cast (idxp - 13))
                           let Just name = getName idx vars
                               | Nothing => corrupt "Term"
                           pure (Local {name} emptyFC c idx (mkPrf idx))
@@ -627,6 +633,9 @@ TTC ConInfo where
   toBuf b NIL = tag 2
   toBuf b CONS = tag 3
   toBuf b ENUM = tag 4
+  toBuf b NOTHING = tag 5
+  toBuf b JUST = tag 6
+  toBuf b RECORD = tag 7
 
   fromBuf b
       = case !getTag of
@@ -635,6 +644,9 @@ TTC ConInfo where
              2 => pure NIL
              3 => pure CONS
              4 => pure ENUM
+             5 => pure NOTHING
+             6 => pure JUST
+             7 => pure RECORD
              _ => corrupt "ConInfo"
 
 mutual
@@ -744,6 +756,10 @@ TTC CFType where
   toBuf b (CFUser n a) = do tag 14; toBuf b n; toBuf b a
   toBuf b CFGCPtr = tag 15
   toBuf b CFBuffer = tag 16
+  toBuf b CFInt8 = tag 17
+  toBuf b CFInt16 = tag 18
+  toBuf b CFInt32 = tag 19
+  toBuf b CFInt64 = tag 20
 
   fromBuf b
       = case !getTag of
@@ -764,6 +780,10 @@ TTC CFType where
              14 => do n <- fromBuf b; a <- fromBuf b; pure (CFUser n a)
              15 => pure CFGCPtr
              16 => pure CFBuffer
+             17 => pure CFInt8
+             18 => pure CFInt16
+             19 => pure CFInt32
+             20 => pure CFInt64
              _ => corrupt "CFType"
 
 export
@@ -1015,7 +1035,7 @@ TTC GlobalDef where
                  toBuf b (safeErase gdef)
                  toBuf b (specArgs gdef)
                  toBuf b (inferrable gdef)
-                 toBuf b (vars gdef)
+                 toBuf b (localVars gdef)
                  toBuf b (visibility gdef)
                  toBuf b (totality gdef)
                  toBuf b (flags gdef)
@@ -1073,12 +1093,12 @@ TTC Transform where
            pure (MkTransform {vars} n env lhs rhs)
 
 -- decode : Context -> Int -> (update : Bool) -> ContextEntry -> Core GlobalDef
-Core.Context.decode gam idx update (Coded bin)
+Core.Context.decode gam idx update (Coded ns bin)
     = do b <- newRef Bin bin
          def <- fromBuf b
          let a = getContent gam
          arr <- get Arr
-         def' <- resolved gam def
+         def' <- resolved gam (restoreNS ns def)
          when update $ coreLift $ writeArray arr idx (Decoded def')
          pure def'
 Core.Context.decode gam idx update (Decoded def) = pure def

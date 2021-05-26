@@ -16,11 +16,13 @@ import Libraries.Data.StringMap
 import Libraries.Data.String.Extra
 import Libraries.Data.ANameMap
 
-import Idris.DocString
+import Idris.Doc.String
 import Idris.Syntax
 
 import Idris.Elab.Implementation
 import Idris.Elab.Interface
+
+import Idris.Desugar.Mutual
 
 import Parser.Lexer.Source
 
@@ -66,6 +68,12 @@ import Libraries.Data.String.Extra
 
 public export
 data Side = LHS | AnyExpr
+
+export
+Eq Side where
+  LHS == LHS = True
+  AnyExpr == AnyExpr = True
+  _ == _ = False
 
 export
 extendSyn : {auto s : Ref Syn SyntaxInfo} ->
@@ -188,24 +196,24 @@ mutual
       =  if lowerFirst nm || nm == "_"
            then do whenJust (isConcreteFC prefFC) \nfc
                      => addSemanticDecorations [(nfc, Bound, Just n)]
-                   pure $ ILam fc rig !(traverse (desugar side ps) p)
-                           (Just n) !(desugarB side ps argTy)
-                                    !(desugar side (n :: ps) scope)
-           else pure $ ILam EmptyFC rig !(traverse (desugar side ps) p)
-                   (Just (MN "lamc" 0)) !(desugarB side ps argTy) $
+                   pure $ ILam fc rig !(traverse (desugar AnyExpr ps) p)
+                           (Just n) !(desugarB AnyExpr ps argTy)
+                                    !(desugar AnyExpr (n :: ps) scope)
+           else pure $ ILam EmptyFC rig !(traverse (desugar AnyExpr ps) p)
+                   (Just (MN "lamc" 0)) !(desugarB AnyExpr ps argTy) $
                  ICase fc (IVar EmptyFC (MN "lamc" 0)) (Implicit fc False)
                      [snd !(desugarClause ps True (MkPatClause fc pat scope []))]
   desugarB side ps (PLam fc rig p (PRef _ n@(MN _ _)) argTy scope)
-      = pure $ ILam fc rig !(traverse (desugar side ps) p)
-                           (Just n) !(desugarB side ps argTy)
-                                    !(desugar side (n :: ps) scope)
+      = pure $ ILam fc rig !(traverse (desugar AnyExpr ps) p)
+                           (Just n) !(desugarB AnyExpr ps argTy)
+                                    !(desugar AnyExpr (n :: ps) scope)
   desugarB side ps (PLam fc rig p (PImplicit _) argTy scope)
-      = pure $ ILam fc rig !(traverse (desugar side ps) p)
-                           Nothing !(desugarB side ps argTy)
-                                   !(desugar side ps scope)
+      = pure $ ILam fc rig !(traverse (desugar AnyExpr ps) p)
+                           Nothing !(desugarB AnyExpr ps argTy)
+                                   !(desugar AnyExpr ps scope)
   desugarB side ps (PLam fc rig p pat argTy scope)
-      = pure $ ILam EmptyFC rig !(traverse (desugar side ps) p)
-                   (Just (MN "lamc" 0)) !(desugarB side ps argTy) $
+      = pure $ ILam EmptyFC rig !(traverse (desugar AnyExpr ps) p)
+                   (Just (MN "lamc" 0)) !(desugarB AnyExpr ps argTy) $
                  ICase fc (IVar EmptyFC (MN "lamc" 0)) (Implicit fc False)
                      [snd !(desugarClause ps True (MkPatClause fc pat scope []))]
   desugarB side ps (PLet fc rig (PRef prefFC n) nTy nVal scope [])
@@ -319,7 +327,10 @@ mutual
   desugarB side ps (PDotted fc x)
       = pure $ IMustUnify fc UserDotted !(desugarB side ps x)
   desugarB side ps (PImplicit fc) = pure $ Implicit fc True
-  desugarB side ps (PInfer fc) = pure $ Implicit fc False
+  desugarB side ps (PInfer fc)
+    = do when (side == LHS) $
+           throw (GenericMsg fc "? is not a valid pattern")
+         pure $ Implicit fc False
   desugarB side ps (PMultiline fc indent lines)
       = addFromString fc !(expandString side ps fc !(trimMultiline fc indent lines))
   desugarB side ps (PString fc strs)
@@ -342,26 +353,30 @@ mutual
            pure val
   desugarB side ps (PList fc nilFC args)
       = expandList side ps nilFC args
+  desugarB side ps (PSnocList fc nilFC args)
+      = expandSnocList side ps nilFC (reverse args)
   desugarB side ps (PPair fc l r)
       = do l' <- desugarB side ps l
            r' <- desugarB side ps r
            let pval = apply (IVar fc mkpairname) [l', r']
            pure $ IAlternative fc (UniqueDefault pval)
                   [apply (IVar fc pairname) [l', r'], pval]
-  desugarB side ps (PDPair fc opFC (PRef nfc (UN n)) (PImplicit _) r)
+  desugarB side ps (PDPair fc opFC (PRef nameFC n@(UN _)) (PImplicit _) r)
       = do r' <- desugarB side ps r
-           let pval = apply (IVar opFC mkdpairname) [IVar nfc (UN n), r']
+           let pval = apply (IVar opFC mkdpairname) [IVar nameFC n, r']
+           let vfc = virtualiseFC nameFC
+           whenJust (isConcreteFC nameFC) \nfc =>
+             addSemanticDefault (nfc, Bound, Just n)
            pure $ IAlternative fc (UniqueDefault pval)
-                  [apply (IVar fc dpairname)
-                      [Implicit nfc False,
-                       ILam nfc top Explicit (Just (UN n)) (Implicit nfc False) r'],
+                  [apply (IVar opFC dpairname)
+                      [Implicit vfc False,
+                       ILam nameFC top Explicit (Just n) (Implicit vfc False) r'],
                    pval]
-  desugarB side ps (PDPair fc opFC (PRef nfc (UN n)) ty r)
+  desugarB side ps (PDPair fc opFC (PRef namefc n@(UN _)) ty r)
       = do ty' <- desugarB side ps ty
            r' <- desugarB side ps r
            pure $ apply (IVar opFC dpairname)
-                        [ty',
-                         ILam nfc top Explicit (Just (UN n)) ty' r']
+                        [ty', ILam namefc top Explicit (Just n) ty' r']
   desugarB side ps (PDPair fc opFC l (PImplicit _) r)
       = do l' <- desugarB side ps l
            r' <- desugarB side ps r
@@ -401,11 +416,14 @@ mutual
   desugarB side ps (PUnifyLog fc lvl tm)
       = pure $ IUnifyLog fc lvl !(desugarB side ps tm)
   desugarB side ps (PPostfixApp fc rec projs)
-      = desugarB side ps $ foldl (\x, proj => PApp fc (PRef fc proj) x) rec projs
+      = desugarB side ps
+      $ foldl (\x, (fc, proj) => PApp fc (PRef fc proj) x) rec projs
   desugarB side ps (PPostfixAppPartial fc projs)
-      = desugarB side ps $
-          PLam fc top Explicit (PRef fc (MN "paRoot" 0)) (PImplicit fc) $
-            foldl (\r, proj => PApp fc (PRef fc proj) r) (PRef fc (MN "paRoot" 0)) projs
+      = do let vfc = virtualiseFC fc
+           let var = PRef vfc (MN "paRoot" 0)
+           desugarB side ps $
+             PLam fc top Explicit var (PImplicit vfc) $
+               foldl (\r, (fc, proj) => PApp fc (PRef fc proj) r) var projs
   desugarB side ps (PWithUnambigNames fc ns rhs)
       = IWithUnambigNames fc ns <$> desugarB side ps rhs
 
@@ -431,6 +449,18 @@ mutual
   expandList side ps nilFC ((consFC, x) :: xs)
       = pure $ apply (IVar consFC (UN "::"))
                 [!(desugarB side ps x), !(expandList side ps nilFC xs)]
+
+  expandSnocList
+             : {auto s : Ref Syn SyntaxInfo} ->
+               {auto b : Ref Bang BangData} ->
+               {auto c : Ref Ctxt Defs} ->
+               {auto u : Ref UST UState} ->
+               {auto m : Ref MD Metadata} ->
+               Side -> List Name -> (nilFC : FC) -> List (FC, PTerm) -> Core RawImp
+  expandSnocList side ps nilFC [] = pure (IVar nilFC (UN "Lin"))
+  expandSnocList side ps nilFC ((consFC, x) :: xs)
+      = pure $ apply (IVar consFC (UN ":<"))
+                [!(expandSnocList side ps nilFC xs) , !(desugarB side ps x)]
 
   addFromString : {auto c : Ref Ctxt Defs} ->
                   FC -> RawImp -> Core RawImp
@@ -648,7 +678,7 @@ mutual
   desugarType ps (MkPTy fc nameFC n d ty)
       = do addDocString n d
            syn <- get Syn
-           pure $ MkImpTy fc nameFC n !(bindTypeNames (usingImpl syn)
+           pure $ MkImpTy fc nameFC n !(bindTypeNames fc (usingImpl syn)
                                                ps !(desugar AnyExpr ps ty))
 
   getClauseFn : RawImp -> Core Name
@@ -722,14 +752,14 @@ mutual
       = do addDocString n doc
            syn <- get Syn
            pure $ MkImpData fc n
-                              !(bindTypeNames (usingImpl syn)
+                              !(bindTypeNames fc (usingImpl syn)
                                               ps !(desugar AnyExpr ps tycon))
                               opts
                               !(traverse (desugarType ps) datacons)
   desugarData ps doc (MkPLater fc n tycon)
       = do addDocString n doc
            syn <- get Syn
-           pure $ MkImpLater fc n !(bindTypeNames (usingImpl syn)
+           pure $ MkImpLater fc n !(bindTypeNames fc (usingImpl syn)
                                                   ps !(desugar AnyExpr ps tycon))
 
   desugarField : {auto s : Ref Syn SyntaxInfo} ->
@@ -742,52 +772,8 @@ mutual
       = do addDocStringNS ns n doc
            syn <- get Syn
            pure (MkIField fc rig !(traverse (desugar AnyExpr ps) p )
-                          n !(bindTypeNames (usingImpl syn)
+                          n !(bindTypeNames fc (usingImpl syn)
                           ps !(desugar AnyExpr ps ty)))
-
-  -- Get the declaration to process on each pass of a mutual block
-  -- Essentially: types on the first pass
-  --    i.e. type constructors of data declarations
-  --         function types
-  --         interfaces (in full, since it includes function types)
-  --         records (just the generated type constructor)
-  --         implementation headers (i.e. note their existence, but not the bodies)
-  -- Everything else on the second pass
-  getDecl : Pass -> PDecl -> Maybe PDecl
-  getDecl p (PImplementation fc vis opts _ is cons n ps iname nusing ds)
-      = Just (PImplementation fc vis opts p is cons n ps iname nusing ds)
-
-  getDecl p (PNamespace fc ns ds)
-      = Just (PNamespace fc ns (mapMaybe (getDecl p) ds))
-
-  getDecl AsType d@(PClaim _ _ _ _ _) = Just d
-  getDecl AsType (PData fc doc vis (MkPData dfc tyn tyc _ _))
-      = Just (PData fc doc vis (MkPLater dfc tyn tyc))
-  getDecl AsType d@(PInterface _ _ _ _ _ _ _ _ _) = Just d
-  getDecl AsType d@(PRecord fc doc vis n ps _ _)
-      = Just (PData fc doc vis (MkPLater fc n (mkRecType ps)))
-    where
-      mkRecType : List (Name, RigCount, PiInfo PTerm, PTerm) -> PTerm
-      mkRecType [] = PType fc
-      mkRecType ((n, c, p, t) :: ts) = PPi fc c p (Just n) t (mkRecType ts)
-  getDecl AsType d@(PFixity _ _ _ _) = Just d
-  getDecl AsType d@(PDirective _ _) = Just d
-  getDecl AsType d = Nothing
-
-  getDecl AsDef (PClaim _ _ _ _ _) = Nothing
-  getDecl AsDef d@(PData _ _ _ (MkPLater _ _ _)) = Just d
-  getDecl AsDef (PInterface _ _ _ _ _ _ _ _ _) = Nothing
-  getDecl AsDef d@(PRecord _ _ _ _ _ _ _) = Just d
-  getDecl AsDef (PFixity _ _ _ _) = Nothing
-  getDecl AsDef (PDirective _ _) = Nothing
-  getDecl AsDef d = Just d
-
-  getDecl p (PParameters fc ps pds)
-      = Just (PParameters fc ps (mapMaybe (getDecl p) pds))
-  getDecl p (PUsing fc ps pds)
-      = Just (PUsing fc ps (mapMaybe (getDecl p) pds))
-
-  getDecl Single d = Just d
 
   export
   desugarFnOpt : {auto s : Ref Syn SyntaxInfo} ->
@@ -839,11 +825,11 @@ mutual
                                                         i' <- traverse (desugar AnyExpr ps) i
                                                         pure (n, rig, i', tm')) params
            -- Look for implicitly bindable names in the parameters
-           let pnames = ifThenElse !isUnboundImplicits
-                          (concatMap (findBindableNames True
-                                         (ps ++ map Builtin.fst params) [])
-                                       (map (Builtin.snd . Builtin.snd . Builtin.snd) params'))
-                          []
+           pnames <- ifThenElse (not !isUnboundImplicits) (pure [])
+             $ map concat
+             $ for (map (Builtin.snd . Builtin.snd . Builtin.snd) params')
+             $ findUniqueBindableNames fc True (ps ++ map Builtin.fst params) []
+
            let paramsb = map (\(n, rig, info, tm) =>
                                  (n, rig, info, doBind pnames tm)) params'
            pure [IParameters fc paramsb (concat pds')]
@@ -851,7 +837,7 @@ mutual
       = do syn <- get Syn
            let oldu = usingImpl syn
            uimpls' <- traverse (\ ntm => do tm' <- desugar AnyExpr ps (snd ntm)
-                                            btm <- bindTypeNames oldu ps tm'
+                                            btm <- bindTypeNames fc oldu ps tm'
                                             pure (fst ntm, btm)) uimpls
            put Syn (record { usingImpl = uimpls' ++ oldu } syn)
            uds' <- traverse (desugarDecl ps) uds
@@ -875,14 +861,11 @@ mutual
                       params
            -- Look for bindable names in all the constraints and parameters
            let mnames = map dropNS (definedIn body)
-           let bnames = ifThenElse !isUnboundImplicits
-                          (concatMap (findBindableNames True
-                                      (ps ++ mnames ++ paramNames) [])
-                                  (map Builtin.snd cons') ++
-                           concatMap (findBindableNames True
-                                      (ps ++ mnames ++ paramNames) [])
-                                  (map (snd . snd) params'))
-                          []
+           bnames <- ifThenElse (not !isUnboundImplicits) (pure [])
+             $ map concat
+             $ for (map Builtin.snd cons' ++ map (snd . snd) params')
+             $ findUniqueBindableNames fc True (ps ++ mnames ++ paramNames) []
+
            let paramsb = map (\ (nm, (rig, tm)) =>
                                  let tm' = doBind bnames tm in
                                  (nm, (rig, tm')))
@@ -919,11 +902,10 @@ mutual
            params' <- traverse (desugar AnyExpr ps) params
            let _ = the (List RawImp) params'
            -- Look for bindable names in all the constraints and parameters
-           let bnames = if !isUnboundImplicits
-                        then
-                        concatMap (findBindableNames True ps []) (map snd cons') ++
-                        concatMap (findBindableNames True ps []) params'
-                        else []
+           bnames <- ifThenElse (not !isUnboundImplicits) (pure [])
+             $ map concat
+             $ for (map snd cons' ++ params')
+             $ findUniqueBindableNames fc True ps []
 
            let paramsb = map (doBind bnames) params'
            let isb = map (\ (n, r, tm) => (n, r, doBind bnames tm)) is'
@@ -1001,8 +983,8 @@ mutual
   desugarDecl ps (PFixity fc _ _ _)
       = throw (GenericMsg fc "Fixity declarations must be for unqualified names")
   desugarDecl ps (PMutual fc ds)
-      = do let mds = mapMaybe (getDecl AsType) ds ++ mapMaybe (getDecl AsDef) ds
-           mds' <- traverse (desugarDecl ps) mds
+      = do let (tys, defs) = splitMutual ds
+           mds' <- traverse (desugarDecl ps) (tys ++ defs)
            pure (concat mds')
   desugarDecl ps (PNamespace fc ns decls)
       = withExtendedNS ns $ do

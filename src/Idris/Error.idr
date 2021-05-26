@@ -411,8 +411,8 @@ perror (MatchTooSpecific fc env tm)
 perror (BadImplicit fc str)
     = pure $ errorDesc (reflow "Can't infer type for unbound implicit name" <++> code (pretty str) <+> dot)
         <+> line <+> !(ploc fc) <+> line <+> reflow "Suggestion: try making it a bound implicit."
-perror (BadRunElab fc env script)
-    = pure $ errorDesc (reflow "Bad elaborator script" <++> code !(pshow env script) <+> dot)
+perror (BadRunElab fc env script desc)
+    = pure $ errorDesc (reflow "Bad elaborator script" <++> code !(pshow env script) <++> parens (pretty desc) <+> dot)
         <+> line <+> !(ploc fc)
 perror (GenericMsg fc str) = pure $ pretty str <+> line <+> !(ploc fc)
 perror (TTCError msg)
@@ -478,6 +478,15 @@ pwarning (UnreachableClause fc env tm)
     = pure $ errorDesc (reflow "Unreachable clause:"
         <++> code !(pshow env tm))
         <+> line <+> !(ploc fc)
+pwarning (ShadowingGlobalDefs _ ns)
+    = pure $ vcat
+    $ reflow "We are about to implicitly bind the following lowercase names."
+   :: reflow "You may be unintentionally shadowing the associated global definitions:"
+   :: map (\ (n, ns) => indent 2 $ hsep $ pretty n
+                            :: reflow "is shadowing"
+                            :: punctuate comma (map pretty (forget ns)))
+          (forget ns)
+
 pwarning (Deprecated s)
     = pure $ pretty "Deprecation warning:" <++> pretty s
 

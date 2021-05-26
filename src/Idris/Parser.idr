@@ -331,10 +331,11 @@ mutual
            let opFC = boundToFC fname op
            pure (PSectionL fc opFC op.val e)
     <|> do  -- (.y.z)  -- section of projection (chain)
-           b <- bounds $ forget <$> some postfixProj
+           b <- bounds $ forget <$> some (bounds postfixProj)
            decoratedSymbol fname ")"
            act [(toNonEmptyFC $ boundToFC fname s, Keyword, Nothing)]
-           pure $ PPostfixAppPartial (boundToFC fname b) b.val
+           let projs = map (\ proj => (boundToFC fname proj, proj.val)) b.val
+           pure $ PPostfixAppPartial (boundToFC fname b) projs
       -- unit type/value
     <|> do b <- bounds (continueWith indents ")")
            pure (PUnit (boundToFC fname (mergeBounds s b)))
@@ -383,7 +384,7 @@ mutual
            decorateKeywords fname xs
            pure (PRange fc (fst rstate) (snd rstate) y.val)
 
-  listExpr : FileName -> WithBounds t -> IndentInfo -> Rule PTerm
+  listExpr : FileName -> WithBounds () -> IndentInfo -> Rule PTerm
   listExpr fname s indents
       = do b <- bounds (do ret <- expr pnowith fname indents
                            decoratedSymbol fname "|"
@@ -406,37 +407,60 @@ mutual
                            nilFC = if null xs then fc else boundToFC fname b
                        in PList fc nilFC (map (\ t => (boundToFC fname t, t.val)) xs))
 
+  snocListExpr : FileName -> WithBounds () -> IndentInfo -> Rule PTerm
+  snocListExpr fname s indents
+      = {- TODO: comprehension -}
+        do mHeadTail <- optional $ do
+             hd <- many $ do x <- expr pdef fname indents
+                             b <- bounds (symbol ",")
+                             pure (x <$ b)
+             tl <- expr pdef fname indents
+             pure (hd, tl)
+           {- TODO: reverse ranges -}
+           b <- bounds (symbol "]")
+           pure $
+             let xs : List (WithBounds PTerm)
+                    = case mHeadTail of
+                        Nothing      => []
+                        Just (hd,tl) => hd ++ [ tl <$ b]
+                 fc = boundToFC fname (mergeBounds s b)
+                 nilFC = ifThenElse (null xs) fc (boundToFC fname s)
+             in PSnocList fc nilFC (map (\ t => (boundToFC fname t, t.val)) xs) --)
+
   nonEmptyTuple : FileName -> WithBounds t -> IndentInfo -> PTerm -> Rule PTerm
   nonEmptyTuple fname s indents e
-      = do rest <- bounds (forget <$> some (bounds (decoratedSymbol fname "," *> optional (bounds (expr pdef fname indents))))
-                           <* continueWith indents ")")
-           pure $ buildOutput rest (mergePairs 0 rest rest.val)
+      = do vals <- some $ do b <- bounds (symbol ",")
+                             exp <- optional (expr pdef fname indents)
+                             pure (boundToFC fname b, exp)
+           end <- continueWithDecorated fname indents ")"
+           act [(toNonEmptyFC (boundToFC fname s), Keyword, Nothing)]
+           pure $ let (start ::: rest) = vals in
+                  buildOutput (fst start) (mergePairs 0 start rest)
     where
 
       lams : List (FC, PTerm) -> PTerm -> PTerm
       lams [] e = e
       lams ((fc, var) :: vars) e
-        = PLam fc top Explicit var (PInfer fc)
-        $ lams vars e
+        = let vfc = virtualiseFC fc in
+          PLam vfc top Explicit var (PInfer vfc) $ lams vars e
 
-      buildOutput : WithBounds t' -> (List (FC, PTerm), PTerm) -> PTerm
-      buildOutput rest (vars, scope) = lams vars $ PPair (boundToFC fname (mergeBounds s rest)) e scope
+      buildOutput : FC -> (List (FC, PTerm), PTerm) -> PTerm
+      buildOutput fc (vars, scope) = lams vars $ PPair fc e scope
 
-      optionalPair : Int -> WithBounds (Maybe (WithBounds PTerm)) -> (Int, (List (FC, PTerm), PTerm))
-      optionalPair i exp = case exp.val of
-        Just e  => (i, ([], e.val))
-        Nothing => let fc = boundToFC fname exp in
-                   let var = PRef fc (MN "__infixTupleSection" i) in
-                   (i+1, ([(fc, var)], var))
+      optionalPair : Int ->
+                     (FC, Maybe PTerm) -> (Int, (List (FC, PTerm), PTerm))
+      optionalPair i (fc, Just e)  = (i, ([], e))
+      optionalPair i (fc, Nothing) =
+        let var = PRef fc (MN "__infixTupleSection" i) in
+        (i+1, ([(fc, var)], var))
 
-      mergePairs : Int -> WithBounds t' -> List (WithBounds (Maybe (WithBounds PTerm))) ->
-                   (List (FC, PTerm), PTerm)
-      mergePairs _ end [] = ([], PUnit (boundToFC fname (mergeBounds s end)))
-      mergePairs i end [exp] = snd (optionalPair i exp)
-      mergePairs i end (exp :: rest)
-          = let (j, (var, t)) = optionalPair i exp in
-            let (vars, ts)    = mergePairs j end rest in
-            (var ++ vars, PPair (boundToFC fname (mergeBounds exp end)) t ts)
+      mergePairs : Int -> (FC, Maybe PTerm) ->
+                   List (FC, Maybe PTerm) -> (List (FC, PTerm), PTerm)
+      mergePairs i hd [] = snd (optionalPair i hd)
+      mergePairs i hd (exp :: rest)
+          = let (j, (var, t)) = optionalPair i hd in
+            let (vars, ts)    = mergePairs j exp rest in
+            (var ++ vars, PPair (fst exp) t ts)
 
   -- A pair, dependent pair, or just a single expression
   tuple : FileName -> WithBounds t -> IndentInfo -> PTerm -> Rule PTerm
@@ -446,24 +470,20 @@ mutual
             act [(toNonEmptyFC $ boundToFC fname s, Keyword, Nothing)]
             pure (PBracketed (boundToFC fname (mergeBounds s end)) e)
 
-  postfixProjection : FileName -> IndentInfo -> Rule PTerm
-  postfixProjection fname indents
-    = do di <- bounds postfixProj
-         pure $ PRef (boundToFC fname di) di.val
-
   simpleExpr : FileName -> IndentInfo -> Rule PTerm
   simpleExpr fname indents
     = do  -- x.y.z
           b <- bounds (do root <- simplerExpr fname indents
-                          projs <- many postfixProj
+                          projs <- many (bounds postfixProj)
                           pure (root, projs))
           (root, projs) <- pure b.val
+          let projs = map (\ proj => (boundToFC fname proj, proj.val)) projs
           pure $ case projs of
             [] => root
             _  => PPostfixApp (boundToFC fname b) root projs
-    <|> do
-          b <- bounds (forget <$> some postfixProj)
-          pure $ PPostfixAppPartial (boundToFC fname b) b.val
+    <|> do b <- bounds (forget <$> some (bounds postfixProj))
+           pure $ let projs = map (\ proj => (boundToFC fname proj, proj.val)) b.val in
+                  PPostfixAppPartial (boundToFC fname b) projs
 
   simplerExpr : FileName -> IndentInfo -> Rule PTerm
   simplerExpr fname indents
@@ -492,7 +512,9 @@ mutual
            pure (PUnquote (boundToFC fname b) b.val)
     <|> do start <- bounds (symbol "(")
            bracketedExpr fname start indents
-    <|> do start <- bounds (symbol "[")
+    <|> do start <- bounds (symbol "[<")
+           snocListExpr fname start indents
+    <|> do start <- bounds (symbol "[>" <|> symbol "[")
            listExpr fname start indents
     <|> do b <- bounds (decoratedSymbol fname "!" *> simpleExpr fname indents)
            pure (PBang (virtualiseFC $ boundToFC fname b) b.val)
@@ -663,7 +685,7 @@ mutual
     letBinder : Rule LetBinder
     letBinder = do s <- bounds (MkPair <$> multiplicity fname <*> expr plhs fname indents)
                    (rig, pat) <- pure s.val
-                   ty <- option (PImplicit (boundToFC fname s))
+                   ty <- option (PImplicit (virtualiseFC $ boundToFC fname s))
                                 (decoratedSymbol fname ":" *> typeExpr (pnoeq pdef) fname indents)
                    (decoratedSymbol fname "=" <|> decoratedSymbol fname ":=")
                    val <- expr pnowith fname indents
@@ -1212,7 +1234,7 @@ namespaceDecl fname indents
                          ds    <- blockAfter col (topDecl fname)
                          pure (doc, ns, ds))
          (doc, ns, ds) <- pure b.val
-         pure (PNamespace (boundToFC fname b) ns (concat ds))
+         pure (PNamespace (boundToFC fname b) ns (collectDefs $ concat ds))
 
 transformDecl : FileName -> IndentInfo -> Rule PDecl
 transformDecl fname indents

@@ -18,9 +18,12 @@ import Data.Vect
 public export
 data ConInfo = DATACON -- normal data constructor
              | TYCON -- normal type constructor
-             | NIL -- nil of a list shaped thing
+             | NIL -- nil of a list or option shaped thing
              | CONS -- cons of a list shaped thing
              | ENUM -- part of an enumeration
+             | NOTHING -- nothing of an option shaped thing
+             | JUST -- just of an option shaped thing
+             | RECORD -- record constructor (no tag)
 
 export
 Show ConInfo where
@@ -29,6 +32,9 @@ Show ConInfo where
   show NIL     = "[nil]"
   show CONS    = "[cons]"
   show ENUM    = "[enum]"
+  show NOTHING = "[nothing]"
+  show JUST    = "[just]"
+  show RECORD  = "[record]"
 
 export
 Eq ConInfo where
@@ -37,6 +43,9 @@ Eq ConInfo where
   NIL == NIL = True
   CONS == CONS = True
   ENUM == ENUM = True
+  NOTHING == NOTHING = True
+  JUST == JUST = True
+  RECORD == RECORD = True
   _ == _ = False
 
 mutual
@@ -144,6 +153,10 @@ public export
 data CFType : Type where
      CFUnit : CFType
      CFInt : CFType
+     CFInt8 : CFType
+     CFInt16 : CFType
+     CFInt32 : CFType
+     CFInt64 : CFType
      CFUnsigned8 : CFType
      CFUnsigned16 : CFType
      CFUnsigned32 : CFType
@@ -203,9 +216,8 @@ mutual
         = assert_total $ "(%con " ++ showFlag ci ++ show x ++ " " ++ show tag ++ " " ++ show xs ++ ")"
       where
         showFlag : ConInfo -> String
-        showFlag NIL = "[nil] "
-        showFlag CONS = "[cons] "
-        showFlag _ = ""
+        showFlag DATACON = ""
+        showFlag f = show f ++ " "
     show (NmOp _ op xs)
         = assert_total $ "(" ++ show op ++ " " ++ show xs ++ ")"
     show (NmExtPrim _ p xs)
@@ -227,9 +239,8 @@ mutual
              show args ++ " " ++ show exp ++ ")"
       where
         showFlag : ConInfo -> String
-        showFlag NIL = "[nil] "
-        showFlag CONS = "[cons] "
-        showFlag _ = ""
+        showFlag DATACON = ""
+        showFlag f = show f ++ " "
 
   export
   Show NamedConstAlt where
@@ -339,6 +350,10 @@ export
 Show CFType where
   show CFUnit = "Unit"
   show CFInt = "Int"
+  show CFInt8 = "Int_8"
+  show CFInt16 = "Int_16"
+  show CFInt32 = "Int_32"
+  show CFInt64 = "Int_64"
   show CFUnsigned8 = "Bits_8"
   show CFUnsigned16 = "Bits_16"
   show CFUnsigned32 = "Bits_32"
@@ -527,16 +542,16 @@ namespace SubstCEnv
        (::) : CExp vars ->
               SubstCEnv ds vars -> SubstCEnv (d :: ds) vars
 
-findDrop : FC -> Var (drop ++ vars) ->
-           SubstCEnv drop vars -> CExp vars
+findDrop : FC -> Var (dropped ++ vars) ->
+           SubstCEnv dropped vars -> CExp vars
 findDrop fc (MkVar p) [] = CLocal fc p
 findDrop fc (MkVar First) (tm :: env) = tm
 findDrop fc (MkVar (Later p)) (tm :: env) = findDrop fc (MkVar p) env
 
 find : FC ->
        SizeOf outer ->
-       Var (outer ++ (drop ++ vars)) ->
-       SubstCEnv drop vars ->
+       Var (outer ++ (dropped ++ vars)) ->
+       SubstCEnv dropped vars ->
        CExp (outer ++ vars)
 find fc outer var env = case sizedView outer of
   Z       => findDrop fc var env
@@ -547,8 +562,8 @@ find fc outer var env = case sizedView outer of
 
 mutual
   substEnv : SizeOf outer ->
-             SubstCEnv drop vars ->
-             CExp (outer ++ (drop ++ vars)) ->
+             SubstCEnv dropped vars ->
+             CExp (outer ++ (dropped ++ vars)) ->
              CExp (outer ++ vars)
   substEnv outer env (CLocal fc prf)
       = find fc outer (MkVar prf) env
@@ -582,35 +597,35 @@ mutual
   substEnv _ _ (CCrash fc x) = CCrash fc x
 
   substConAlt : SizeOf outer ->
-                SubstCEnv drop vars ->
-                CConAlt (outer ++ (drop ++ vars)) ->
+                SubstCEnv dropped vars ->
+                CConAlt (outer ++ (dropped ++ vars)) ->
                 CConAlt (outer ++ vars)
-  substConAlt {vars} {outer} {drop} p env (MkConAlt x ci tag args sc)
+  substConAlt {vars} {outer} {dropped} p env (MkConAlt x ci tag args sc)
       = MkConAlt x ci tag args
            (rewrite appendAssociative args outer vars in
                     substEnv (mkSizeOf args + p) env
-                      (rewrite sym (appendAssociative args outer (drop ++ vars)) in
+                      (rewrite sym (appendAssociative args outer (dropped ++ vars)) in
                                sc))
 
   substConstAlt : SizeOf outer ->
-                  SubstCEnv drop vars ->
-                  CConstAlt (outer ++ (drop ++ vars)) ->
+                  SubstCEnv dropped vars ->
+                  CConstAlt (outer ++ (dropped ++ vars)) ->
                   CConstAlt (outer ++ vars)
   substConstAlt outer env (MkConstAlt x sc) = MkConstAlt x (substEnv outer env sc)
 
 export
-substs : {drop, vars : _} ->
-         SubstCEnv drop vars -> CExp (drop ++ vars) -> CExp vars
+substs : {dropped, vars : _} ->
+         SubstCEnv dropped vars -> CExp (dropped ++ vars) -> CExp vars
 substs env tm = substEnv zero env tm
 
-resolveRef : SizeOf later ->
+resolveRef : SizeOf outer ->
              SizeOf done ->
              Bounds bound -> FC -> Name ->
-             Maybe (CExp (later ++ (done ++ bound ++ vars)))
+             Maybe (CExp (outer ++ (done ++ bound ++ vars)))
 resolveRef _ _ None _ _ = Nothing
-resolveRef {later} {vars} {done} p q (Add {xs} new old bs) fc n
+resolveRef {outer} {vars} {done} p q (Add {xs} new old bs) fc n
     = if n == old
-         then rewrite appendAssociative later done (new :: xs ++ vars) in
+         then rewrite appendAssociative outer done (new :: xs ++ vars) in
               let MkNVar p = weakenNVar (p + q) (MkNVar First) in
                     Just (CLocal fc p)
          else rewrite appendAssociative done [new] (xs ++ vars)
@@ -618,10 +633,10 @@ resolveRef {later} {vars} {done} p q (Add {xs} new old bs) fc n
 
 mutual
   export
-  mkLocals : SizeOf later ->
+  mkLocals : SizeOf outer ->
              Bounds bound ->
-             CExp (later ++ vars) ->
-             CExp (later ++ (bound ++ vars))
+             CExp (outer ++ vars) ->
+             CExp (outer ++ (bound ++ vars))
   mkLocals later bs (CLocal {idx} {x} fc p)
       = let MkNVar p' = addVars later bs (MkNVar p) in CLocal {x} fc p'
   mkLocals later bs (CRef fc var)
@@ -656,21 +671,21 @@ mutual
   mkLocals later bs (CErased fc) = CErased fc
   mkLocals later bs (CCrash fc x) = CCrash fc x
 
-  mkLocalsConAlt : SizeOf later ->
+  mkLocalsConAlt : SizeOf outer ->
                    Bounds bound ->
-                   CConAlt (later ++ vars) ->
-                   CConAlt (later ++ (bound ++ vars))
-  mkLocalsConAlt {bound} {later} {vars} p bs (MkConAlt x ci tag args sc)
-        = let sc' : CExp ((args ++ later) ++ vars)
-                  = rewrite sym (appendAssociative args later vars) in sc in
+                   CConAlt (outer ++ vars) ->
+                   CConAlt (outer ++ (bound ++ vars))
+  mkLocalsConAlt {bound} {outer} {vars} p bs (MkConAlt x ci tag args sc)
+        = let sc' : CExp ((args ++ outer) ++ vars)
+                  = rewrite sym (appendAssociative args outer vars) in sc in
               MkConAlt x ci tag args
-               (rewrite appendAssociative args later (bound ++ vars) in
+               (rewrite appendAssociative args outer (bound ++ vars) in
                         mkLocals (mkSizeOf args + p) bs sc')
 
-  mkLocalsConstAlt : SizeOf later ->
+  mkLocalsConstAlt : SizeOf outer ->
                      Bounds bound ->
-                     CConstAlt (later ++ vars) ->
-                     CConstAlt (later ++ (bound ++ vars))
+                     CConstAlt (outer ++ vars) ->
+                     CConstAlt (outer ++ (bound ++ vars))
   mkLocalsConstAlt later bs (MkConstAlt x sc) = MkConstAlt x (mkLocals later bs sc)
 
 export

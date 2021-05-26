@@ -22,7 +22,6 @@ record ESSt where
   preamble : SortedMap String String
   ccTypes : List String
 
-
 jsString : String -> String
 jsString s = "'" ++ (concatMap okchar (unpack s)) ++ "'"
   where
@@ -90,10 +89,12 @@ addStringIteratorToPreamble =
     let newName = esName name
     addToPreamble name newName defs
 
+
 jsIdent : String -> String
 jsIdent s = concatMap okchar (unpack s)
   where
     okchar : Char -> String
+    okchar '_' = "_"
     okchar c = if isAlphaNum c
                   then cast c
                   else "$" ++ the (String) (asHex (cast {to=Int} c))
@@ -285,7 +286,6 @@ div (Just k) x y =
                  else pure $ jsIntOfDouble k (x ++ " / " ++ y)
 div Nothing x y = pure $ binOp "/" x y
 
-
 -- Creates the definition of a binary arithmetic operation.
 -- Rounding / truncation behavior is determined from the
 -- `IntKind`.
@@ -366,7 +366,8 @@ constPrimitives = MkConstantPrimitives {
                 (Unsigned m, Signed n)   =>
                   if n > P m then pure expanded else shrunk
 
-jsOp : {auto c : Ref ESs ESSt} -> PrimFn arity -> Vect arity String -> Core String
+jsOp : {0 arity : Nat} -> {auto c : Ref ESs ESSt} ->
+       PrimFn arity -> Vect arity String -> Core String
 jsOp (Add ty) [x, y] = arithOp (intKind ty) "+" x y
 jsOp (Sub ty) [x, y] = arithOp (intKind ty) "-" x y
 jsOp (Mul ty) [x, y] = mult (intKind ty) x y

@@ -2,10 +2,6 @@ module Syntax
 
 %default total
 
-{- -- interfaces don't work yet
-{0 a : Type} -> (foo : Show a) => Show (Maybe a) where
--}
-
 showMaybe : {0 a : Type} -> (assumption : Show a) => Maybe a -> String
 showMaybe x@ma = case map (id . id) ma of
     Nothing => "Nothing"
@@ -43,7 +39,7 @@ parameters (x, y : Nat) (z, a : Nat)
   add4 : Nat
   add4 = x + y + z + a
 
-anonLam : Maybe (m : Nat ** n : Nat ** m === n)
+anonLam : Maybe (m : Nat ** n ** m === n)
 anonLam = map (\m => (m ** m ** Refl))
         $ map (uncurry $ \ m, n => m + n)
         $ map (\ (m, n) => (n, m))

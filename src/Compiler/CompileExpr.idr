@@ -198,9 +198,10 @@ builtinMagic : Ref Ctxt Defs => Core (forall vars. CExp vars -> CExp vars)
 builtinMagic = do
     defs <- get Ctxt
     let b = defs.builtinTransforms
-    let nats = foldMap builtinMagicNat $ values $ natTyNames b
-    let natToInts = map natToIntMagic $ toList $ natToIntegerFns b
-    pure $ magic $ natHack ++ nats ++ natToInts
+    let nats = foldMap builtinMagicNat $ values b.natTyNames
+    let natToInts = map natToIntMagic $ toList b.natToIntegerFns
+    let intToNats = map intToNatMagic $ toList b.integerToNatFns
+    pure $ magic $ natHack ++ nats ++ natToInts ++ intToNats
   where
     builtinMagicNat : NatBuiltin -> List Magic
     builtinMagicNat cons =
@@ -213,6 +214,10 @@ builtinMagic = do
     natToIntMagic (fn, MkNatToInt arity natIdx) =
         MagicCRef fn arity
             (\ _, _, args => index natIdx args)
+    intToNatMagic : (Name, IntToNat) -> Magic
+    intToNatMagic (fn, MkIntToNat arity intIdx) =
+        MagicCRef fn arity
+            (\ fc, fc', args => CApp fc (CRef fc' (NS typesNS (UN "prim__integerToNat"))) [index intIdx args])
 
 isNatCon : (zeroMap : NameMap ZERO) ->
            (succMap : NameMap SUCC) ->
@@ -604,6 +609,10 @@ nfToCFType _ _ (NPrimVal _ Bits8Type) = pure CFUnsigned8
 nfToCFType _ _ (NPrimVal _ Bits16Type) = pure CFUnsigned16
 nfToCFType _ _ (NPrimVal _ Bits32Type) = pure CFUnsigned32
 nfToCFType _ _ (NPrimVal _ Bits64Type) = pure CFUnsigned64
+nfToCFType _ _ (NPrimVal _ Int8Type) = pure CFInt8
+nfToCFType _ _ (NPrimVal _ Int16Type) = pure CFInt16
+nfToCFType _ _ (NPrimVal _ Int32Type) = pure CFInt32
+nfToCFType _ _ (NPrimVal _ Int64Type) = pure CFInt64
 nfToCFType _ False (NPrimVal _ StringType) = pure CFString
 nfToCFType fc True (NPrimVal _ StringType)
     = throw (GenericMsg fc "String not allowed in a foreign struct")

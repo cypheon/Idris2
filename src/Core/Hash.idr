@@ -227,6 +227,14 @@ Hashable CFType where
       h `hashWithSalt` 15 `hashWithSalt` n `hashWithSalt` fs
     CFUser n xs =>
       h `hashWithSalt` 16 `hashWithSalt` n `hashWithSalt` xs
+    CFInt8 =>
+      h `hashWithSalt` 17
+    CFInt16 =>
+      h `hashWithSalt` 18
+    CFInt32 =>
+      h `hashWithSalt` 19
+    CFInt64 =>
+      h `hashWithSalt` 20
 
 export
 Hashable Constant where
@@ -384,6 +392,9 @@ Hashable ConInfo where
     NIL => h `hashWithSalt` 2
     CONS => h `hashWithSalt` 3
     ENUM => h `hashWithSalt` 4
+    NOTHING => h `hashWithSalt` 5
+    JUST => h `hashWithSalt` 6
+    RECORD => h `hashWithSalt` 7
 
 
 mutual
