@@ -1,0 +1,59 @@
+image: freebsd/latest
+
+sources:
+  - https://git.sr.ht/~cypheon/Idris2
+
+packages:
+  - coreutils
+  - gmake
+
+environment:
+  PATH: /home/build/.idris2/bin:/usr/local/sbin:/usr/sbin:/sbin:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games
+  SCHEME: /usr/local/bin/chez-scheme
+  CHEZ: /usr/local/bin/chez-scheme
+
+tasks:
+  - add-swap: |
+      sudo dd if=/dev/zero of=/usr/swap0 bs=1m count=0 seek=4096
+      sudo chmod 0600 /usr/swap0
+      echo 'md99	none	swap	sw,file=/usr/swap0,late	0	0' | sudo tee -a /etc/fstab
+      sudo /sbin/swapon -aL
+
+  - install-chezscheme: |
+      # Threaded Chez Scheme Runtime
+      curl -LsSf -o /tmp/chez.txz https://sinyax.net/chez-scheme-9.5.2.txz
+      sudo /usr/sbin/pkg install -yf /tmp/chez.txz
+
+  - bootstrap: |
+      cd Idris2
+      # patch the bootstrap code to make it run on FreeBSD
+      sed -i '' '5 s/$/\n  [(i3fb ti3fb a6fb ta6fb) #f]/' bootstrap/idris2_app/idris2.ss
+      sed -i '' '/define CompilerC-45SchemeC-45Chez-schHeader/ s/(i3le/(i3fb ti3fb a6fb ta6fb) #f] [(/' bootstrap/idris2_app/idris2.ss
+      gmake bootstrap
+      gmake install
+
+  - build: |
+      cd Idris2
+      git clean -xdf
+      gmake all
+      gmake install
+
+  - build-stage2: |
+      cd Idris2
+      git clean -xdf
+      gmake all
+      gmake install install-api
+      tar czvf /tmp/idris2_prebuilt_freebsd.tar.gz -C "$HOME" .idris2
+
+  - test: |
+      sudo /usr/sbin/pkg install -y racket
+      cd Idris2
+      gmake test
+
+artifacts:
+  - /tmp/idris2_prebuilt_freebsd.tar.gz
+
+#triggers:
+  #- action: email
+    #condition: failure
+    #to: Johann Rudloff <johann+builds.sr.ht@sinyax.net>

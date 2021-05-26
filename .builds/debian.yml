@@ -1,0 +1,42 @@
+image: debian/stable
+
+sources:
+  - https://git.sr.ht/~cypheon/Idris2
+
+packages:
+  - chezscheme
+  - racket
+
+environment:
+  PATH: /home/build/.idris2/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games
+
+tasks:
+  - bootstrap: |
+      cd Idris2
+      make bootstrap SCHEME=chezscheme
+      make install
+
+  - build: |
+      cd Idris2
+      git clean -xdf
+      make all
+      make install
+
+  - build-stage2: |
+      cd Idris2
+      git clean -xdf
+      make all
+      make install install-api
+      tar czvf /tmp/idris2_prebuilt_debian.tar.gz -C "$HOME" .idris2
+
+  - test: |
+      cd Idris2
+      make test
+
+artifacts:
+  - /tmp/idris2_prebuilt_debian.tar.gz
+
+triggers:
+  - action: email
+    condition: failure
+    to: Johann Rudloff <johann+builds.sr.ht@sinyax.net>
