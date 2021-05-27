@@ -48,7 +48,7 @@ tasks:
   - test: |
       sudo /usr/sbin/pkg install -y racket
       cd Idris2
-      gmake test
+      gmake test INTERACTIVE=
 
 artifacts:
   - /tmp/idris2_prebuilt_freebsd.tar.gz
