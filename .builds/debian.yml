@@ -31,7 +31,7 @@ tasks:
 
   - test: |
       cd Idris2
-      make test
+      make test INTERACTIVE=
 
 artifacts:
   - /tmp/idris2_prebuilt_debian.tar.gz
