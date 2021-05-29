@@ -1,16 +1,5 @@
 module Main
 
-import Data.Maybe
-import Data.List
-import Data.List1
-import Data.Strings
-
-import System
-import System.Directory
-import System.File
-import System.Info
-import System.Path
-
 import Test.Golden
 
 %default covering
@@ -73,7 +62,7 @@ idrisTestsError = MkTestPool "Error messages" []
       ["error001", "error002", "error003", "error004", "error005",
        "error006", "error007", "error008", "error009", "error010",
        "error011", "error012", "error013", "error014", "error015",
-       "error016", "error017", "error018",
+       "error016", "error017", "error018", "error019",
        -- Parse errors
        "perror001", "perror002", "perror003", "perror004", "perror005",
        "perror006", "perror007", "perror008"]
