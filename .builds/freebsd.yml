@@ -12,6 +12,7 @@ environment:
   PATH: /home/build/.idris2/bin:/usr/local/sbin:/usr/sbin:/sbin:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games
   SCHEME: /usr/local/bin/chez-scheme
   CHEZ: /usr/local/bin/chez-scheme
+  CFLAGS: '-I/usr/local/include'
 
 tasks:
   - add-swap: |
