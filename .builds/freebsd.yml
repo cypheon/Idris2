@@ -26,6 +26,10 @@ tasks:
       curl -LsSf -o /tmp/chez.txz https://sinyax.net/chez-scheme-9.5.2.txz
       sudo /usr/sbin/pkg install -yf /tmp/chez.txz
 
+      # Install `sha256sum` script:
+      printf -- '#\!/bin/sh\nexec shasum -a 256 "$@"\n' | sudo tee /usr/local/bin/sha256sum
+      sudo chmod 755 /usr/local/bin/sha256sum
+
   - bootstrap: |
       cd Idris2
       # patch the bootstrap code to make it run on FreeBSD
