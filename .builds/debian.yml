@@ -5,6 +5,7 @@ sources:
 
 packages:
   - chezscheme
+  - libgmp-dev
   - racket
 
 environment:

@@ -6,6 +6,7 @@ sources:
 packages:
   - coreutils
   - gmake
+  - gmp
 
 environment:
   PATH: /home/build/.idris2/bin:/usr/local/sbin:/usr/sbin:/sbin:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games
