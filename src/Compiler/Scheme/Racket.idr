@@ -2,6 +2,7 @@ module Compiler.Scheme.Racket
 
 import Compiler.Common
 import Compiler.CompileExpr
+import Compiler.Generated
 import Compiler.Inline
 import Compiler.Scheme.Common
 
@@ -18,7 +19,7 @@ import Data.List
 import Data.Maybe
 import Libraries.Data.NameMap
 import Data.Nat
-import Data.Strings
+import Data.String
 import Data.Vect
 
 import Idris.Env
@@ -43,7 +44,7 @@ findRacoExe =
 schHeader : Bool -> String -> String
 schHeader prof libs
   = "#lang racket/base\n" ++
-    "; @generated\n" ++
+    "; " ++ (generatedString "Racket") ++ "\n" ++
     "(require racket/async-channel)\n" ++ -- for asynchronous channels
     "(require racket/future)\n" ++ -- for parallelism/concurrency
     "(require racket/math)\n" ++ -- for math ops
@@ -267,7 +268,7 @@ useCC : {auto f : Ref Done (List String) } ->
         String -> FC -> List String -> List (Name, CFType) -> CFType -> Core (String, String)
 useCC appdir fc ccs args ret
     = case parseCC ["scheme,racket", "scheme", "C"] ccs of
-           Nothing => throw (NoForeignCC fc)
+           Nothing => throw (NoForeignCC fc ccs)
            Just ("scheme,racket", [sfn]) =>
                do body <- schemeCall fc sfn (map fst args) ret
                   pure ("", body)
@@ -276,7 +277,7 @@ useCC appdir fc ccs args ret
                   pure ("", body)
            Just ("C", [cfn, clib]) => cCall appdir fc cfn clib args ret
            Just ("C", [cfn, clib, chdr]) => cCall appdir fc cfn clib args ret
-           _ => throw (NoForeignCC fc)
+           _ => throw (NoForeignCC fc ccs)
 
 -- For every foreign arg type, return a name, and whether to pass it to the
 -- foreign call (we don't pass '%World')
@@ -331,6 +332,7 @@ getFgnCall appdir (n, fc, d) = schFgnDef appdir fc n d
 startRacket : String -> String -> String -> String
 startRacket racket appdir target = unlines
     [ "#!/bin/sh"
+    , "# " ++ (generatedString "Racket")
     , ""
     , "set -e # exit on any error"
     , ""
@@ -355,6 +357,7 @@ startRacketCmd racket appdir target = unlines
 startRacketWinSh : String -> String -> String -> String
 startRacketWinSh racket appdir target = unlines
     [ "#!/bin/sh"
+    , "# " ++ (generatedString "Racket")
     , ""
     , "set -e # exit on any error"
     , ""
@@ -437,7 +440,7 @@ compileExpr mkexec c tmpDir outputDir tm outfile
          if ok == 0
             then do -- TODO: add launcher script
                     let outShRel = outputDir </> outfile
-                    the (Core ()) $ if isWindows
+                    if isWindows
                        then if mkexec
                                then makeShWindows "" outShRel appDirRel outBinFile
                                else makeShWindows (racket ++ " ") outShRel appDirRel outRktFile
@@ -456,4 +459,4 @@ executeExpr c tmpDir tm
 
 export
 codegenRacket : Codegen
-codegenRacket = MkCG (compileExpr True) executeExpr
+codegenRacket = MkCG (compileExpr True) executeExpr Nothing Nothing
