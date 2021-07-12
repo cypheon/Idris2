@@ -8,6 +8,9 @@ packages:
   - libgmp-dev
   - racket
 
+secrets:
+  - 85205afe-e52d-4bde-9cd9-63cda23de346
+
 environment:
   PATH: /home/build/.idris2/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games
 
@@ -29,6 +32,19 @@ tasks:
       make all
       make install install-api
       tar czvf /tmp/idris2_prebuilt_debian.tar.gz -C "$HOME" .idris2
+
+  - upload: |
+      cd Idris2
+      commit_id=$(git rev-parse HEAD)
+      dst="upload-artifacts@neo.sinyax.net"
+      root="/srv/www/cdn/artifacts"
+      prefix="idris2_debian"
+      echo 'StrictHostKeyChecking no' >> ~/.ssh/config
+
+      scp -q /tmp/idris2_prebuilt_debian.tar.gz $dst:"${root}/${prefix}_${commit_id}.tar.gz"
+      ssh $dst ln -sf "${prefix}_${commit_id}.tar.gz" "${root}/${prefix}_latest.tar.gz"
+
+      echo "uploaded to https://neo.sinyax.net/cdn/artifacts/${prefix}_${commit_id}.tar.gz"
 
   - test: |
       cd Idris2
