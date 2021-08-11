@@ -39,6 +39,8 @@ integerToNat x
        then Z
        else S (assert_total (integerToNat (prim__sub_Integer x 1)))
 
+-- %builtin IntegerToNatural Prelude.Types.integerToNat
+
 -- Define separately so we can spot the name when optimising Nats
 ||| Add two natural numbers.
 ||| @ x the number to case-split on
@@ -98,6 +100,8 @@ natToInteger Z = 0
 natToInteger (S k) = 1 + natToInteger k
                          -- integer (+) may be non-linear in second
                          -- argument
+
+-- %builtin NaturalToInteger Prelude.Types.natToInteger
 
 ||| Counts the number of elements that satify a predicate.
 public export
@@ -246,7 +250,7 @@ data Dec : Type -> Type where
 
   ||| The case where the property holding would be a contradiction.
   ||| @ contra a demonstration that prop would be a contradiction
-  No  : (contra : prop -> Void) -> Dec prop
+  No  : (contra : Not prop) -> Dec prop
 
 export Uninhabited (Yes p === No q) where uninhabited eq impossible
 export Uninhabited (No p === Yes q) where uninhabited eq impossible
@@ -725,7 +729,7 @@ log x = prim__doubleLog x
 
 public export
 pow : Double -> Double -> Double
-pow x y = exp (y * log x)
+pow x y = exp (y * log x) -- prim__doublePow x y
 
 public export
 sin : Double -> Double
@@ -820,7 +824,7 @@ Range Nat where
     EQ => pure x
     GT => assert_total $ takeUntil (<= y) (countFrom x (\n => minus n 1))
   rangeFromThenTo x y z = case compare x y of
-    LT => if z > x
+    LT => if z >= x
              then assert_total $ takeBefore (> z) (countFrom x (plus (minus y x)))
              else Nil
     EQ => if x == z then pure x else Nil

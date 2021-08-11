@@ -1,12 +1,12 @@
 #include "getline.h"
 #include "idris_file.h"
 
-#include <fcntl.h>
-#include <errno.h>
-#include <sys/stat.h>
-#include <time.h>
-#include <sys/time.h>
 #include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <string.h>
+#include <sys/time.h>
+#include <time.h>
 #include <unistd.h>
 
 #ifdef _WIN32
@@ -14,6 +14,8 @@
 #else
 #include <sys/select.h>
 #endif
+
+#include "idris_util.h"
 
 FILE* idris2_openFile(char* name, char* mode) {
 #ifdef _WIN32
@@ -25,7 +27,7 @@ FILE* idris2_openFile(char* name, char* mode) {
 }
 
 void idris2_closeFile(FILE* f) {
-    fclose(f);
+    IDRIS2_VERIFY(fclose(f) == 0, "fclose failed: %s", strerror(errno));
 }
 
 int idris2_fileError(FILE* f) {
@@ -43,6 +45,15 @@ int idris2_fileErrno() {
     default:
         return (errno + 5);
     }
+}
+
+int idris2_chmod(const char* path, mode_t mode) {
+#ifdef _WIN32
+    // return _chmod(path, mode);
+    return 0; /* ??? (from win_hack.c) */
+#else
+    return chmod(path, mode);
+#endif
 }
 
 int idris2_removeFile(const char *filename) {
@@ -90,10 +101,11 @@ void *idris2_popen(const char *cmd, const char *mode) {
 
 void idris2_pclose(void *stream) {
 #ifdef _WIN32
-    _pclose(stream);
+    int r = _pclose(stream);
 #else
-    pclose(stream);
+    int r = pclose(stream);
 #endif
+    IDRIS2_VERIFY(r != -1, "pclose failed");
 }
 
 // seek through the next newline, consuming and

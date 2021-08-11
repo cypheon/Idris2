@@ -55,13 +55,14 @@ import Network.Socket.Data
 
 %default covering
 
-%foreign "C:fdopen,libc 6"
-prim__fdopen : Int -> String -> PrimIO AnyPtr
+||| TODO: use the version in `Network.FFI` in network after the next release.
+%foreign "C:idrnet_fdopen, libidris2_support, idris_net.h"
+prim__idrnet_fdopen : Int -> String -> PrimIO AnyPtr
 
 export
 socketToFile : Socket -> IO (Either String File)
 socketToFile (MkSocket f _ _ _) = do
-  file <- FHandle <$> primIO (prim__fdopen f "r+")
+  file <- FHandle <$> primIO (prim__idrnet_fdopen f "r+")
   if !(fileError file)
     then pure (Left "Failed to fdopen socket file descriptor")
     else pure (Right file)
@@ -378,7 +379,10 @@ displayIDEResult outf i (REPL $ Edited (EditError x))
   = printIDEError outf i x
 displayIDEResult outf i (REPL $ Edited (MadeLemma lit name pty pappstr))
   = printIDEResult outf i
-  $ StringAtom $ (relit lit $ show name ++ " : " ++ show pty ++ "\n") ++ pappstr
+  $ SExpList [ SymbolAtom "metavariable-lemma"
+             , SExpList [ SymbolAtom "replace-metavariable", StringAtom pappstr ]
+             , SExpList [ SymbolAtom "definition-type", StringAtom $ relit lit $ show name ++ " : " ++ show pty ]
+             ]
 displayIDEResult outf i (REPL $ Edited (MadeWith lit wapp))
   = printIDEResult outf i
   $ StringAtom $ showSep "\n" (map (relit lit) wapp)

@@ -34,13 +34,13 @@ usleep sec = primIO (prim__usleep sec)
 -- Get the number of arguments
 %foreign "scheme:blodwen-arg-count"
          support "idris2_getArgCount"
-         "node:lambda:() => BigInt(process.argv.length)"
+         "node:lambda:() => process.argv.length"
 prim__getArgCount : PrimIO Int
 
 -- Get argument number `n`
 %foreign "scheme:blodwen-arg"
          support "idris2_getArg"
-         "node:lambda:n => process.argv[(Number(n))]"
+         "node:lambda:n => process.argv[n]"
 prim__getArg : Int -> PrimIO String
 
 export
@@ -107,10 +107,10 @@ export
 system : HasIO io => String -> io Int
 system cmd = primIO (prim__system cmd)
 
-%foreign support "idris2_time"
-         "scheme:blodwen-time"
+%foreign "C:idris2_time, libidris2_support, idris2_support.h"
 prim__time : PrimIO Int
 
+||| Return the number of seconds since epoch.
 export
 time : HasIO io => io Integer
 time = pure $ cast !(primIO prim__time)
@@ -124,7 +124,7 @@ getPID : HasIO io => io Int
 getPID = primIO prim__getPID
 
 %foreign libc "exit"
-         "node:lambda:c => process.exit(Number(c))"
+         "node:lambda:c => process.exit(c)"
 prim__exit : Int -> PrimIO ()
 
 ||| Programs can either terminate successfully, or end in a caught

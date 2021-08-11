@@ -85,20 +85,21 @@ findLibs ds
 
 schHeader : String -> List String -> Bool -> String
 schHeader chez libs whole
-  = (if os /= "windows" then "#!" ++ chez ++ " --script\n\n" else "") ++
+  = (if os /= "windows"
+        then "#!" ++ chez ++ (if whole then " --program\n\n" else " --script\n\n")
+        else "") ++
     "; " ++ (generatedString "Chez") ++ "\n" ++
     "(import (chezscheme))\n" ++
     "(case (machine-type)\n" ++
     "  [(i3fb ti3fb a6fb ta6fb) #f]\n" ++
-    "  [(i3le ti3le a6le ta6le) (load-shared-object \"libc.so.6\")]\n" ++
+    "  [(i3le ti3le a6le ta6le tarm64le) (load-shared-object \"libc.so.6\")]\n" ++
     "  [(i3osx ti3osx a6osx ta6osx) (load-shared-object \"libc.dylib\")]\n" ++
-    "  [(i3nt ti3nt a6nt ta6nt) (load-shared-object \"msvcrt.dll\")" ++
-    "                           (load-shared-object \"ws2_32.dll\")]\n" ++
+    "  [(i3nt ti3nt a6nt ta6nt) (load-shared-object \"msvcrt.dll\")]\n" ++
     "  [else (load-shared-object \"libc.so\")])\n\n" ++
     showSep "\n" (map (\x => "(load-shared-object \"" ++ escapeStringChez x ++ "\")") libs) ++ "\n\n" ++
     if whole
        then "(let ()\n"
-       else "(source-directories (cons (getenv \"IDRIS2_INC_SRC\") '()))\n"
+       else "(source-directories (cons (getenv \"IDRIS2_INC_SRC\") (source-directories)))\n"
 
 schFooter : Bool -> Bool -> String
 schFooter prof whole
@@ -400,32 +401,31 @@ startChezPreamble = unlines
 
 startChez : String -> String -> String
 startChez appdir target = startChezPreamble ++ unlines
-    [ "export LD_LIBRARY_PATH=\"$DIR/" ++ appdir ++ "\":$LD_LIBRARY_PATH"
+    [ "export LD_LIBRARY_PATH=\"$DIR/" ++ appdir ++ ":$LD_LIBRARY_PATH\""
     , "export IDRIS2_INC_SRC=\"$DIR/" ++ appdir ++ "\""
     , "\"$DIR/" ++ target ++ "\" \"$@\""
     ]
 
-startChezCmd : String -> String -> String -> String
-startChezCmd chez appdir target = unlines
+startChezCmd : String -> String -> String -> String -> String
+startChezCmd chez appdir target progType = unlines
     [ "@echo off"
     , "set APPDIR=%~dp0"
-    , "set PATH=%APPDIR%\\" ++ appdir ++ ";%PATH%"
-    , "set IDRIS2_INC_SRC=%APPDIR%\\"
-    , "\"" ++ chez ++ "\" --script \"%APPDIR%/" ++ target ++ "\" %*"
+    , "set PATH=%APPDIR%" ++ appdir ++ ";%PATH%"
+    , "set IDRIS2_INC_SRC=%APPDIR%" ++ appdir
+    , "\"" ++ chez ++ "\" " ++ progType ++ " \"%APPDIR%" ++ target ++ "\" %*"
     ]
 
-startChezWinSh : String -> String -> String -> String
-startChezWinSh chez appdir target = unlines
+startChezWinSh : String -> String -> String -> String -> String
+startChezWinSh chez appdir target progType = unlines
     [ "#!/bin/sh"
     , "# " ++ (generatedString "Chez")
     , ""
     , "set -e # exit on any error"
     , ""
-    , "DIR=$(dirname \"$(readlink -f -- \"$0\")\")"
-    , "CHEZ=$(cygpath \"" ++ chez ++"\")"
-    , "export PATH=\"$DIR/" ++ appdir ++ "\":$PATH"
+    , "DIR=$(dirname \"$(readlink -f -- \"$0\" || cygpath -a -- \"$0\")\")"
+    , "PATH=\"$DIR/" ++ appdir ++ ":$PATH\""
     , "export IDRIS2_INC_SRC=\"$DIR/" ++ appdir ++ "\""
-    , "\"$CHEZ\" --script \"$DIR/" ++ target ++ "\" \"$@\""
+    , "\"" ++ chez ++ "\" " ++ progType ++ " \"$DIR/" ++ target ++ "\" \"$@\""
     ]
 
 ||| Compile a TT expression to Chez Scheme
@@ -516,12 +516,12 @@ makeSh outShRel appdir outAbs
          pure ()
 
 ||| Make Windows start scripts, one for bash environments and one batch file
-makeShWindows : String -> String -> String -> String -> Core ()
-makeShWindows chez outShRel appdir outAbs
+makeShWindows : String -> String -> String -> String -> String -> Core ()
+makeShWindows chez outShRel appdir outAbs progType
     = do let cmdFile = outShRel ++ ".cmd"
-         Right () <- coreLift $ writeFile cmdFile (startChezCmd chez appdir outAbs)
+         Right () <- coreLift $ writeFile cmdFile (startChezCmd chez appdir outAbs progType)
             | Left err => throw (FileErr cmdFile err)
-         Right () <- coreLift $ writeFile outShRel (startChezWinSh chez appdir outAbs)
+         Right () <- coreLift $ writeFile outShRel (startChezWinSh chez appdir outAbs progType)
             | Left err => throw (FileErr outShRel err)
          pure ()
 
@@ -544,7 +544,7 @@ compileExprWhole makeitso c tmpDir outputDir tm outfile
            compileToSO prof chez appDirGen outSsAbs
          let outShRel = outputDir </> outfile
          if isWindows
-            then makeShWindows chez outShRel appDirRel (if makeitso then outSoFile else outSsFile)
+            then makeShWindows chez outShRel appDirRel (if makeitso then outSoFile else outSsFile) "--program"
             else makeSh outShRel appDirRel (if makeitso then outSoFile else outSsFile)
          coreLift_ $ chmodRaw outShRel 0o755
          pure (Just outShRel)
@@ -570,7 +570,7 @@ compileExprInc makeitso c tmpDir outputDir tm outfile
          compileToSSInc c mods libs appDirGen tm outSsAbs
          let outShRel = outputDir </> outfile
          if isWindows
-            then makeShWindows chez outShRel appDirRel outSsFile
+            then makeShWindows chez outShRel appDirRel outSsFile "--script"
             else makeSh outShRel appDirRel outSsFile
          coreLift_ $ chmodRaw outShRel 0o755
          pure (Just outShRel)
@@ -596,7 +596,8 @@ executeExpr c tmpDir tm
 incCompile : Ref Ctxt Defs ->
              (sourceFile : String) -> Core (Maybe (String, List String))
 incCompile c sourceFile
-    = do ssFile <- getTTCFileName sourceFile "ss"
+    = do
+         ssFile <- getTTCFileName sourceFile "ss"
          soFile <- getTTCFileName sourceFile "so"
          soFilename <- getObjFileName sourceFile "so"
          cdata <- getIncCompileData False Cases

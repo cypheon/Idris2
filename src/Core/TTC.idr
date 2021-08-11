@@ -574,6 +574,7 @@ export
 
   toBuf b DoubleExp = tag 19
   toBuf b DoubleLog = tag 20
+  toBuf b DoublePow = tag 21
   toBuf b DoubleSin = tag 22
   toBuf b DoubleCos = tag 23
   toBuf b DoubleTan = tag 24
@@ -634,6 +635,7 @@ export
                  14 => pure StrIndex
                  15 => pure StrCons
                  16 => pure StrAppend
+                 21 => pure DoublePow
                  35 => do ty <- fromBuf b; pure (ShiftL ty)
                  36 => do ty <- fromBuf b; pure (ShiftR ty)
                  37 => do ty <- fromBuf b; pure (BAnd ty)
@@ -659,6 +661,8 @@ TTC ConInfo where
   toBuf b NOTHING = tag 5
   toBuf b JUST = tag 6
   toBuf b RECORD = tag 7
+  toBuf b ZERO = tag 8
+  toBuf b SUCC = tag 9
 
   fromBuf b
       = case !getTag of
@@ -670,6 +674,8 @@ TTC ConInfo where
              5 => pure NOTHING
              6 => pure JUST
              7 => pure RECORD
+             8 => pure ZERO
+             9 => pure SUCC
              _ => corrupt "ConInfo"
 
 mutual
@@ -783,6 +789,8 @@ TTC CFType where
   toBuf b CFInt16 = tag 18
   toBuf b CFInt32 = tag 19
   toBuf b CFInt64 = tag 20
+  toBuf b CFForeignObj = tag 21
+  toBuf b CFInteger = tag 22
 
   fromBuf b
       = case !getTag of
@@ -807,6 +815,8 @@ TTC CFType where
              18 => pure CFInt16
              19 => pure CFInt32
              20 => pure CFInt64
+             21 => pure CFForeignObj
+             22 => pure CFInteger
              _ => corrupt "CFType"
 
 export
@@ -1005,6 +1015,7 @@ TTC DefFlag where
   toBuf b (PartialEval x) = tag 9 -- names not useful any more
   toBuf b AllGuarded = tag 10
   toBuf b (ConType ci) = do tag 11; toBuf b ci
+  toBuf b (Identity x) = do tag 12; toBuf b x
 
   fromBuf b
       = case !getTag of
@@ -1018,6 +1029,7 @@ TTC DefFlag where
              9 => pure (PartialEval [])
              10 => pure AllGuarded
              11 => do ci <- fromBuf b; pure (ConType ci)
+             12 => do x <- fromBuf b; pure (Identity x)
              _ => corrupt "DefFlag"
 
 export

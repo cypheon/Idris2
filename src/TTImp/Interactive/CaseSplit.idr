@@ -133,7 +133,8 @@ defaultNames : List String
 defaultNames = ["x", "y", "z", "w", "v", "s", "t", "u"]
 
 export
-getArgName : {auto c : Ref Ctxt Defs} ->
+getArgName : {vars : _} ->
+             {auto c : Ref Ctxt Defs} ->
              Defs -> Name ->
              List Name -> -- explicitly bound names (possibly coming later),
                           -- so we don't invent a default
@@ -168,12 +169,13 @@ getArgName defs x bound allvars ty
     getName _ defs used = unique defs defs 0 used
 
 export
-getArgNames : {auto c : Ref Ctxt Defs} ->
+getArgNames : {vars : _} ->
+              {auto c : Ref Ctxt Defs} ->
               Defs -> List Name -> List Name -> Env Term vars -> NF vars ->
               Core (List String)
 getArgNames defs bound allvars env (NBind fc x (Pi _ _ p ty) sc)
     = do ns <- case p of
-                    Explicit => pure [!(getArgName defs x bound allvars ty)]
+                    Explicit => pure [!(getArgName defs x bound allvars !(evalClosure defs ty))]
                     _ => pure []
          sc' <- sc defs (toClosure defaultOpts env (Erased fc False))
          pure $ ns ++ !(getArgNames defs bound (map UN ns ++ allvars) env sc')
@@ -338,6 +340,7 @@ mkCase {c} {u} fn orig lhs_raw
                -- Fixes Issue #74. The problem is that if the function is defined in a sub module,
                -- then the current namespace (accessed by calling getNS) differs from the function
                -- namespace, therefore it is not considered visible by TTImp.Elab.App.checkVisibleNS
+               -- FIXME: Causes issue #1385
                setAllPublic True
 
                -- Use 'Rig0' since it might be a type level function, or it might

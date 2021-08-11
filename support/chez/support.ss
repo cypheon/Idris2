@@ -257,7 +257,7 @@
 (define (blodwen-get-thread-data ty)
   (blodwen-thread-data))
 
-(define (blodwen-set-thread-data a)
+(define (blodwen-set-thread-data ty a)
   (blodwen-thread-data a))
 
 ;; Semaphore
@@ -421,7 +421,6 @@
         (micro (mod s 1000000)))
        (sleep (make-time 'time-duration (* 1000 micro) sec))))
 
-(define (blodwen-time) (time-second (current-time)))
 (define (blodwen-clock-time-utc) (current-time 'time-utc))
 (define (blodwen-clock-time-monotonic) (current-time 'time-monotonic))
 (define (blodwen-clock-time-duration) (current-time 'time-duration))
@@ -482,3 +481,82 @@
         (when x
           (((cdr x) (car x)) 'erased)
           (run))))))
+
+;; For creating and reading back scheme objects
+
+; read a scheme string and evaluate it, returning 'Just result' on success
+; TODO: catch exception!
+(define (blodwen-eval-scheme str)
+  (box (eval (read (open-input-string str))))) ; box == Just
+
+(define (blodwen-eval-okay obj)
+  (if (null? obj)
+      0
+      1))
+
+(define (blodwen-get-eval-result obj)
+  (unbox obj))
+
+(define (blodwen-debug-scheme obj)
+  (display obj) (newline))
+
+(define (blodwen-is-number obj)
+  (if (number? obj) 1 0))
+
+(define (blodwen-is-integer obj)
+  (if (and (number? obj) (exact? obj)) 1 0))
+
+(define (blodwen-is-float obj)
+  (if (flonum? obj) 1 0))
+
+(define (blodwen-is-char obj)
+  (if (char? obj) 1 0))
+
+(define (blodwen-is-string obj)
+  (if (string? obj) 1 0))
+
+(define (blodwen-is-procedure obj)
+  (if (procedure? obj) 1 0))
+
+(define (blodwen-is-symbol obj)
+  (if (symbol? obj) 1 0))
+
+(define (blodwen-is-vector obj)
+  (if (vector? obj) 1 0))
+
+(define (blodwen-is-nil obj)
+  (if (null? obj) 1 0))
+
+(define (blodwen-is-pair obj)
+  (if (pair? obj) 1 0))
+
+(define (blodwen-is-box obj)
+  (if (box? obj) 1 0))
+
+(define (blodwen-make-symbol str)
+  (string->symbol str))
+
+; The below rely on checking that the objects are the right type first.
+
+(define (blodwen-vector-ref obj i)
+  (vector-ref obj i))
+
+(define (blodwen-vector-length obj)
+  (vector-length obj))
+
+(define (blodwen-vector-list obj)
+  (vector->list obj))
+
+(define (blodwen-unbox obj)
+  (unbox obj))
+
+(define (blodwen-apply obj arg)
+  (obj arg))
+
+(define (blodwen-force obj)
+  (obj))
+
+(define (blodwen-read-symbol sym)
+  (symbol->string sym))
+
+(define (blodwen-id x) x)

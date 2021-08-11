@@ -20,6 +20,7 @@ import TTImp.Utils
 
 import Data.List
 import Data.Maybe
+import Data.String
 import Libraries.Data.NameMap
 
 %default covering
@@ -183,7 +184,8 @@ caseBlock {vars} rigc elabinfo fc nest env scr scrtm scrty caseRig alts expected
          -- (esp. in the scrutinee!) are set to 0 in the case type
          let env = updateMults (linearUsed est) env
          defs <- get Ctxt
-         let vis = case !(lookupCtxtExact (Resolved (defining est)) (gamma defs)) of
+         parentDef <- lookupCtxtExact (Resolved (defining est)) (gamma defs)
+         let vis = case parentDef of
                         Just gdef =>
                              if visibility gdef == Public
                                 then Public
@@ -211,6 +213,7 @@ caseBlock {vars} rigc elabinfo fc nest env scr scrtm scrty caseRig alts expected
 
          logEnv "elab.case" 10 "Case env" env
          logTermNF "elab.case" 2 ("Case function type: " ++ show casen) [] casefnty
+         traverse_ addToSave (keys (getMetas casefnty))
 
          -- If we've had to add implicits to the case type (because there
          -- were unbound implicits) then we're in a bit of a mess. Easiest
@@ -222,9 +225,13 @@ caseBlock {vars} rigc elabinfo fc nest env scr scrtm scrty caseRig alts expected
                                 (newDef fc casen (if isErased rigc then erased else top)
                                       [] casefnty vis None))
 
-         -- don't worry about totality of the case block; it'll be handled
-         -- by the totality of the parent function
-         setFlag fc (Resolved cidx) (SetTotal PartialOK)
+         -- set the totality of the case block to be the same as that
+         -- of the parent function
+         let tot = fromMaybe PartialOK $ do findSetTotal (flags !parentDef)
+         log "elab.case" 5 $
+           unwords [ "Setting totality requirement for", show casen
+                   , "to", show tot]
+         setFlag fc (Resolved cidx) (SetTotal tot)
          let caseRef : Term vars = Ref fc Func (Resolved cidx)
 
          let applyEnv = applyToFull fc caseRef env
@@ -369,7 +376,7 @@ checkCase : {vars : _} ->
             Maybe (Glued vars) ->
             Core (Term vars, Glued vars)
 checkCase rig elabinfo nest env fc scr scrty_in alts exp
-    = delayElab fc rig env exp 0 $
+    = delayElab fc rig env exp CaseBlock $
         do scrty_exp <- case scrty_in of
                              Implicit _ _ => guessScrType alts
                              _ => pure scrty_in
@@ -383,12 +390,12 @@ checkCase rig elabinfo nest env fc scr scrty_in alts exp
            log "elab.case" 5 $ "Checking " ++ show scr ++ " at " ++ show chrig
 
            (scrtm_in, gscrty, caseRig) <- handle
-              (do c <- runDelays 10 $ check chrig elabinfo nest env scr (Just (gnf env scrtyv))
+              (do c <- runDelays (const True) $ check chrig elabinfo nest env scr (Just (gnf env scrtyv))
                   pure (fst c, snd c, chrig))
               \case
                 e@(LinearMisuse _ _ r _)
                   => branchOne
-                     (do c <- runDelays 10 $ check linear elabinfo nest env scr
+                     (do c <- runDelays (const True) $ check linear elabinfo nest env scr
                               (Just (gnf env scrtyv))
                          pure (fst c, snd c, linear))
                      (throw e)
@@ -406,7 +413,7 @@ checkCase rig elabinfo nest env fc scr scrty_in alts exp
     -- type of the case block. But (TODO) consider delaying on failure?
     checkConcrete : NF vs -> Core ()
     checkConcrete (NApp _ (NMeta n i _) _)
-        = throw (GenericMsg (getFC scr) "Can't infer type for case scrutinee")
+        = throw (GenericMsg fc "Can't infer type for case scrutinee")
     checkConcrete _ = pure ()
 
     applyTo : Defs -> RawImp -> NF [] -> Core RawImp

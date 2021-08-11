@@ -360,7 +360,7 @@ interface Pretty a where
 export
 Pretty String where
   pretty str = let str' = if "\n" `isSuffixOf` str then dropLast 1 str else str in
-                   vsep $ map unsafeTextWithoutNewLines $ forget $ lines str'
+                   vsep $ map unsafeTextWithoutNewLines $ lines str'
 
 public export
 FromString (Doc ann) where
@@ -413,10 +413,6 @@ Pretty Char where
 export Pretty Nat where pretty = unsafeTextWithoutNewLines . show
 export Pretty Int where pretty = unsafeTextWithoutNewLines . show
 export Pretty Integer where pretty = unsafeTextWithoutNewLines . show
-export Pretty Int8 where pretty = unsafeTextWithoutNewLines . show
-export Pretty Int16 where pretty = unsafeTextWithoutNewLines . show
-export Pretty Int32 where pretty = unsafeTextWithoutNewLines . show
-export Pretty Int64 where pretty = unsafeTextWithoutNewLines . show
 export Pretty Double where pretty = unsafeTextWithoutNewLines . show
 export Pretty Bits8 where pretty = unsafeTextWithoutNewLines . show
 export Pretty Bits16 where pretty = unsafeTextWithoutNewLines . show

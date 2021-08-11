@@ -235,6 +235,10 @@ Hashable CFType where
       h `hashWithSalt` 19
     CFInt64 =>
       h `hashWithSalt` 20
+    CFForeignObj =>
+      h `hashWithSalt` 21
+    CFInteger =>
+      h `hashWithSalt` 22
 
 export
 Hashable Constant where
@@ -384,6 +388,9 @@ Hashable (PrimFn arity) where
     Crash =>
       h `hashWithSalt` 37
 
+    DoublePow =>
+      h `hashWithSalt` 38
+
 export
 Hashable ConInfo where
   hashWithSalt h = \case
@@ -395,7 +402,8 @@ Hashable ConInfo where
     NOTHING => h `hashWithSalt` 5
     JUST => h `hashWithSalt` 6
     RECORD => h `hashWithSalt` 7
-
+    ZERO => h `hashWithSalt` 8
+    SUCC => h `hashWithSalt` 9
 
 mutual
   export
