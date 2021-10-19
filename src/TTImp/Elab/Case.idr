@@ -1,6 +1,6 @@
 module TTImp.Elab.Case
 
-import Core.CaseTree
+import Core.Case.CaseTree
 import Core.Context
 import Core.Context.Log
 import Core.Core
@@ -10,6 +10,8 @@ import Core.Normalise
 import Core.Unify
 import Core.TT
 import Core.Value
+
+import Idris.Syntax
 
 import TTImp.Elab.Check
 import TTImp.Elab.Delayed
@@ -157,6 +159,7 @@ caseBlock : {vars : _} ->
             {auto m : Ref MD Metadata} ->
             {auto u : Ref UST UState} ->
             {auto e : Ref EST (EState vars)} ->
+            {auto s : Ref Syn SyntaxInfo} ->
             RigCount ->
             ElabInfo -> FC ->
             NestedNames vars ->
@@ -209,6 +212,10 @@ caseBlock {vars} rigc elabinfo fc nest env scr scrtm scrty caseRig alts expected
                             (maybe (Bind fc scrn (Pi fc caseRig Explicit scrty)
                                        (weaken caseretty))
                                    (const caseretty) splitOn)
+         -- If we can normalise the type without the result being excessively
+         -- big do it. It's the depth of stuck applications - 10 is already
+         -- pretty much unreadable!
+         casefnty <- normaliseSizeLimit defs 10 [] casefnty
          (erasedargs, _) <- findErased casefnty
 
          logEnv "elab.case" 10 "Case env" env
@@ -284,7 +291,7 @@ caseBlock {vars} rigc elabinfo fc nest env scr scrtm scrty caseRig alts expected
     -- so that it applies to the right original variable
     getBindName : Int -> Name -> List Name -> (Name, Name)
     getBindName idx n@(UN un) vs
-       = if n `elem` vs then (n, MN un idx) else (n, n)
+       = if n `elem` vs then (n, MN (displayUserName un) idx) else (n, n)
     getBindName idx n vs
        = if n `elem` vs then (n, MN "_cn" idx) else (n, n)
 
@@ -323,7 +330,7 @@ caseBlock {vars} rigc elabinfo fc nest env scr scrtm scrty caseRig alts expected
     -- Names used in the pattern we're matching on, so don't bind them
     -- in the generated case block
     usedIn : RawImp -> List Name
-    usedIn (IBindVar _ n) = [UN n]
+    usedIn (IBindVar _ n) = [UN $ Basic n]
     usedIn (IApp _ f a) = usedIn f ++ usedIn a
     usedIn (IAs _ _ _ n a) = n :: usedIn a
     usedIn (IAlternative _ _ alts) = concatMap usedIn alts
@@ -370,6 +377,7 @@ checkCase : {vars : _} ->
             {auto m : Ref MD Metadata} ->
             {auto u : Ref UST UState} ->
             {auto e : Ref EST (EState vars)} ->
+            {auto s : Ref Syn SyntaxInfo} ->
             RigCount -> ElabInfo ->
             NestedNames vars -> Env Term vars ->
             FC -> (scr : RawImp) -> (ty : RawImp) -> List ImpClause ->
@@ -392,7 +400,7 @@ checkCase rig elabinfo nest env fc scr scrty_in alts exp
            (scrtm_in, gscrty, caseRig) <- handle
               (do c <- runDelays (const True) $ check chrig elabinfo nest env scr (Just (gnf env scrtyv))
                   pure (fst c, snd c, chrig))
-              \case
+            $ \case
                 e@(LinearMisuse _ _ r _)
                   => branchOne
                      (do c <- runDelays (const True) $ check linear elabinfo nest env scr

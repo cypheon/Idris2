@@ -1,6 +1,6 @@
 module Compiler.CompileExpr
 
-import Core.CaseTree
+import Core.Case.CaseTree
 import public Core.CompileExpr
 import Core.Context
 import Core.Env
@@ -180,45 +180,45 @@ magic ms e = go ms e where
 %inline
 magic__integerToNat : FC -> FC -> forall vars. Vect 1 (CExp vars) -> CExp vars
 magic__integerToNat fc fc' [k]
-  = CApp fc (CRef fc' (NS typesNS (UN "prim__integerToNat"))) [k]
+  = CApp fc (CRef fc' (NS typesNS (UN $ Basic "prim__integerToNat"))) [k]
 
 magic__natMinus : FC -> FC -> forall vars. Vect 2 (CExp vars) -> CExp vars
 magic__natMinus fc fc' [m,n]
   = magic__integerToNat fc fc'
-    [CApp fc (CRef fc' (UN "prim__sub_Integer")) [m, n]]
+    [CApp fc (CRef fc' (UN $ Basic "prim__sub_Integer")) [m, n]]
 
 -- We don't reuse natMinus here because we assume that unsuc will only be called
 -- on S-headed numbers so we do not need the truncating integerToNat call!
 magic__natUnsuc : FC -> FC -> forall vars. Vect 1 (CExp vars) -> CExp vars
 magic__natUnsuc fc fc' [m]
-  = CApp fc (CRef fc' (UN "prim__sub_Integer")) [m, CPrimVal fc (BI 1)]
+  = CApp fc (CRef fc' (UN $ Basic "prim__sub_Integer")) [m, CPrimVal fc (BI 1)]
 
 -- TODO: next release remove this and use %builtin pragma
 natHack : List Magic
 natHack =
-    [ MagicCRef (NS typesNS (UN "natToInteger")) 1 (\ _, _, [k] => k)
-    , MagicCRef (NS typesNS (UN "integerToNat")) 1 magic__integerToNat
-    , MagicCRef (NS typesNS (UN "plus")) 2
-         (\ fc, fc', [m,n] => CApp fc (CRef fc' (UN "prim__add_Integer")) [m, n])
-    , MagicCRef (NS typesNS (UN "mult")) 2
-         (\ fc, fc', [m,n] => CApp fc (CRef fc' (UN "prim__mul_Integer")) [m, n])
-    , MagicCRef (NS typesNS (UN "minus")) 2 magic__natMinus
-    , MagicCRef (NS typesNS (UN "equalNat")) 2
-         (\ fc, fc', [m,n] => CApp fc (CRef fc' (UN "prim__eq_Integer")) [m, n])
-    , MagicCRef (NS typesNS (UN "compareNat")) 2
-         (\ fc, fc', [m,n] => CApp fc (CRef fc' (NS eqOrdNS (UN "compareInteger"))) [m, n])
+    [ MagicCRef (NS typesNS (UN $ Basic "natToInteger")) 1 (\ _, _, [k] => k)
+    , MagicCRef (NS typesNS (UN $ Basic "integerToNat")) 1 magic__integerToNat
+    , MagicCRef (NS typesNS (UN $ Basic "plus")) 2
+         (\ fc, fc', [m,n] => CApp fc (CRef fc' (UN $ Basic "prim__add_Integer")) [m, n])
+    , MagicCRef (NS typesNS (UN $ Basic "mult")) 2
+         (\ fc, fc', [m,n] => CApp fc (CRef fc' (UN $ Basic "prim__mul_Integer")) [m, n])
+    , MagicCRef (NS typesNS (UN $ Basic "minus")) 2 magic__natMinus
+    , MagicCRef (NS typesNS (UN $ Basic "equalNat")) 2
+         (\ fc, fc', [m,n] => CApp fc (CRef fc' (UN $ Basic "prim__eq_Integer")) [m, n])
+    , MagicCRef (NS typesNS (UN $ Basic "compareNat")) 2
+         (\ fc, fc', [m,n] => CApp fc (CRef fc' (NS eqOrdNS (UN $ Basic "compareInteger"))) [m, n])
     ]
 
 -- get all transformation from %builtin pragmas
 builtinMagic : Ref Ctxt Defs => Core (forall vars. CExp vars -> CExp vars)
 builtinMagic = pure $ magic natHack
 
-data NextSucc : Type where
-newSuccName : {auto s : Ref NextSucc Int} -> Core Name
-newSuccName = do
-    x <- get NextSucc
-    put NextSucc $ x + 1
-    pure $ MN "succ" x
+data NextMN : Type where
+newMN : {auto s : Ref NextMN Int} -> String -> Core Name
+newMN base = do
+    x <- get NextMN
+    put NextMN $ x + 1
+    pure $ MN base x
 
 natBranch :  CConAlt vars -> Bool
 natBranch (MkConAlt n ZERO _ _ _) = True
@@ -243,7 +243,7 @@ getZBranch [] = Nothing
 getZBranch (x :: xs) = tryZBranch x <+> getZBranch xs
 
 -- Rewrite case trees on Nat to be case trees on Integer
-builtinNatTree : {auto s : Ref NextSucc Int} -> CExp vars -> Core (CExp vars)
+builtinNatTree : {auto s : Ref NextMN Int} -> CExp vars -> Core (CExp vars)
 builtinNatTree (CConCase fc sc@(CLocal _ _) alts def)
    = pure $ if any natBranch alts
                then let defb = fromMaybe (CCrash fc "Nat case not covered") def
@@ -252,7 +252,7 @@ builtinNatTree (CConCase fc sc@(CLocal _ _) alts def)
                         CConstCase fc sc [MkConstAlt (BI 0) zalt] (Just salt)
                else CConCase fc sc alts def
 builtinNatTree (CConCase fc sc alts def)
-    = do x <- newSuccName
+    = do x <- newMN "succ"
          pure $ CLet fc x True sc
                 !(builtinNatTree $ CConCase fc (CLocal fc First) (map weaken alts) (map weaken def))
 builtinNatTree t = pure t
@@ -269,6 +269,16 @@ enumTree (CConCase fc sc alts def)
         = pure $ MkConstAlt (I tag) sc
     toEnum _ = Nothing
 enumTree t = t
+
+-- remove pattern matches on unit
+unitTree : {auto u : Ref NextMN Int} -> CExp vars -> Core (CExp vars)
+unitTree exp@(CConCase fc sc alts def) = fromMaybe (pure exp)
+    $ do let [MkConAlt _ UNIT _ [] e] = alts
+             | _ => Nothing
+         Just $ case sc of -- TODO: Check scrutinee has no effect, and skip let binding
+                     CLocal _ _ => pure e
+                     _ => pure $ CLet fc !(newMN "_unit") False sc (weaken e)
+unitTree t = pure t
 
 -- See if the constructor is a special constructor type, e.g a nil or cons
 -- shaped thing.
@@ -288,7 +298,7 @@ dconFlag n
 mutual
   toCExpTm : {vars : _} ->
              {auto c : Ref Ctxt Defs} ->
-             {auto s : Ref NextSucc Int} ->
+             {auto s : Ref NextMN Int} ->
              (magic : forall vars. CExp vars -> CExp vars) ->
              Name -> Term vars ->
              Core (CExp vars)
@@ -301,7 +311,7 @@ mutual
            case fl of
                 ENUM => pure $ CPrimVal fc (I tag)
                 ZERO => pure $ CPrimVal fc (BI 0)
-                SUCC => do x <- newSuccName
+                SUCC => do x <- newMN "succ"
                            pure $ CLam fc x $ COp fc (Add IntegerType) [CPrimVal fc (BI 1), CLocal fc First]
                 _ => pure $ CCon fc cn fl (Just tag) []
   toCExpTm m n (Ref fc (TyCon tag arity) fn)
@@ -320,8 +330,9 @@ mutual
                           (CLet fc x True !(toCExp m n val) sc')
                           rig
   toCExpTm m n (Bind fc x (Pi _ c e ty) sc)
-      = pure $ CCon fc (UN "->") TYCON Nothing [!(toCExp m n ty),
-                                    CLam fc x !(toCExp m n sc)]
+      = pure $ CCon fc (UN (Basic "->")) TYCON Nothing
+                       [ !(toCExp m n ty)
+                       , CLam fc x !(toCExp m n sc)]
   toCExpTm m n (Bind fc x b tm) = pure $ CErased fc
   -- We'd expect this to have been dealt with in toCExp, but for completeness...
   toCExpTm m n (App fc tm arg)
@@ -338,13 +349,13 @@ mutual
       = let t = constTag c in
             if t == 0
                then pure $ CPrimVal fc c
-               else pure $ CCon fc (UN (show c)) TYCON Nothing []
+               else pure $ CCon fc (UN $ Basic $ show c) TYCON Nothing []
   toCExpTm m n (Erased fc _) = pure $ CErased fc
-  toCExpTm m n (TType fc) = pure $ CCon fc (UN "Type") TYCON Nothing []
+  toCExpTm m n (TType fc) = pure $ CCon fc (UN (Basic "Type")) TYCON Nothing []
 
   toCExp : {vars : _} ->
            {auto c : Ref Ctxt Defs} ->
-           {auto s : Ref NextSucc Int} ->
+           {auto s : Ref NextMN Int} ->
            (magic : forall vars. CExp vars -> CExp vars) ->
            Name -> Term vars ->
            Core (CExp vars)
@@ -367,7 +378,7 @@ mutual
 mutual
   conCases : {vars : _} ->
              {auto c : Ref Ctxt Defs} ->
-             {auto s : Ref NextSucc Int} ->
+             {auto s : Ref NextMN Int} ->
              Name -> List (CaseAlt vars) ->
              Core (List (CConAlt vars))
   conCases n [] = pure []
@@ -396,7 +407,7 @@ mutual
 
   constCases : {vars : _} ->
                {auto c : Ref Ctxt Defs} ->
-               {auto s : Ref NextSucc Int} ->
+               {auto s : Ref NextMN Int} ->
                Name -> List (CaseAlt vars) ->
                Core (List (CConstAlt vars))
   constCases n [] = pure []
@@ -414,7 +425,7 @@ mutual
   -- once.
   getNewType : {vars : _} ->
                {auto c : Ref Ctxt Defs} ->
-               {auto s : Ref NextSucc Int} ->
+               {auto s : Ref NextMN Int} ->
                FC -> CExp vars ->
                Name -> List (CaseAlt vars) ->
                Core (Maybe (CExp vars))
@@ -466,7 +477,7 @@ mutual
 
   getDef : {vars : _} ->
            {auto c : Ref Ctxt Defs} ->
-           {auto s : Ref NextSucc Int} ->
+           {auto s : Ref NextMN Int} ->
            Name -> List (CaseAlt vars) ->
            Core (Maybe (CExp vars))
   getDef n [] = pure Nothing
@@ -478,7 +489,7 @@ mutual
 
   toCExpTree : {vars : _} ->
                {auto c : Ref Ctxt Defs} ->
-               {auto s : Ref NextSucc Int} ->
+               {auto s : Ref NextMN Int} ->
                Name -> CaseTree vars ->
                Core (CExp vars)
   toCExpTree n alts@(Case _ x scTy (DelayCase ty arg sc :: rest))
@@ -492,7 +503,7 @@ mutual
 
   toCExpTree' : {vars : _} ->
                 {auto c : Ref Ctxt Defs} ->
-                {auto s : Ref NextSucc Int} ->
+                {auto s : Ref NextMN Int} ->
                 Name -> CaseTree vars ->
                 Core (CExp vars)
   toCExpTree' n (Case _ x scTy alts@(ConCase _ _ _ _ :: _))
@@ -504,7 +515,7 @@ mutual
                def <- getDef n alts
                if isNil cases
                   then pure (fromMaybe (CErased fc) def)
-                  else pure $ enumTree !(builtinNatTree $
+                  else unitTree $ enumTree !(builtinNatTree $
                             CConCase fc (CLocal fc x) cases def)
   toCExpTree' n (Case _ x scTy alts@(DelayCase _ _ _ :: _))
       = throw (InternalError "Unexpected DelayCase")
@@ -575,15 +586,15 @@ getFieldArgs defs cl
 
 getNArgs : {auto c : Ref Ctxt Defs} ->
            Defs -> Name -> List (Closure []) -> Core NArgs
-getNArgs defs (NS _ (UN "IORes")) [arg] = pure $ NIORes arg
-getNArgs defs (NS _ (UN "Ptr")) [arg] = pure NPtr
-getNArgs defs (NS _ (UN "AnyPtr")) [] = pure NPtr
-getNArgs defs (NS _ (UN "GCPtr")) [arg] = pure NGCPtr
-getNArgs defs (NS _ (UN "GCAnyPtr")) [] = pure NGCPtr
-getNArgs defs (NS _ (UN "Buffer")) [] = pure NBuffer
-getNArgs defs (NS _ (UN "ForeignObj")) [] = pure NForeignObj
-getNArgs defs (NS _ (UN "Unit")) [] = pure NUnit
-getNArgs defs (NS _ (UN "Struct")) [n, args]
+getNArgs defs (NS _ (UN $ Basic "IORes")) [arg] = pure $ NIORes arg
+getNArgs defs (NS _ (UN $ Basic "Ptr")) [arg] = pure NPtr
+getNArgs defs (NS _ (UN $ Basic "AnyPtr")) [] = pure NPtr
+getNArgs defs (NS _ (UN $ Basic "GCPtr")) [arg] = pure NGCPtr
+getNArgs defs (NS _ (UN $ Basic "GCAnyPtr")) [] = pure NGCPtr
+getNArgs defs (NS _ (UN $ Basic "Buffer")) [] = pure NBuffer
+getNArgs defs (NS _ (UN $ Basic "ForeignObj")) [] = pure NForeignObj
+getNArgs defs (NS _ (UN $ Basic "Unit")) [] = pure NUnit
+getNArgs defs (NS _ (UN $ Basic "Struct")) [n, args]
     = do NPrimVal _ (Str n') <- evalClosure defs n
              | nf => throw (GenericMsg (getLoc nf) "Unknown name for struct")
          pure (Struct n' !(getFieldArgs defs args))
@@ -640,9 +651,9 @@ nfToCFType _ s (NTCon fc n_in _ _ args)
                    carg <- nfToCFType fc s narg
                    pure (CFIORes carg)
 nfToCFType _ s (NType _)
-    = pure (CFUser (UN "Type") [])
+    = pure (CFUser (UN (Basic "Type")) [])
 nfToCFType _ s (NErased _ _)
-    = pure (CFUser (UN "__") [])
+    = pure (CFUser (UN (Basic "__")) [])
 nfToCFType fc s t
     = do defs <- get Ctxt
          ty <- quote defs [] t
@@ -700,7 +711,7 @@ toCDef n ty _ None
     = pure $ MkError $ CCrash emptyFC ("Encountered undefined name " ++ show !(getFullName n))
 toCDef n ty erased (PMDef pi args _ tree _)
     = do let (args' ** p) = mkSub 0 args erased
-         s <- newRef NextSucc 0
+         s <- newRef NextMN 0
          comptree <- toCExpTree n tree
          pure $ toLam (externalDecl pi) $ if isNil erased
             then MkFun args comptree
@@ -764,8 +775,8 @@ compileExp : {auto c : Ref Ctxt Defs} ->
              ClosedTerm -> Core (CExp [])
 compileExp tm
     = do m <- builtinMagic
-         s <- newRef NextSucc 0
-         exp <- toCExp m (UN "main") tm
+         s <- newRef NextMN 0
+         exp <- toCExp m (UN $ Basic "main") tm
          pure exp
 
 ||| Given a name, look up an expression, and compile it to a CExp in the environment
@@ -791,15 +802,3 @@ compileDef n
     noDefYet : Def -> List CG -> Bool
     noDefYet None (_ :: _) = True
     noDefYet _ _ = False
-
-export
-mkForgetDef : {auto c : Ref Ctxt Defs} ->
-              Name -> Core ()
-mkForgetDef n
-    = do defs <- get Ctxt
-         Just gdef <- lookupCtxtExact n (gamma defs)
-              | Nothing => throw (InternalError ("Trying to compile unknown name " ++ show n))
-         case compexpr gdef of
-              Nothing => pure ()
-              Just cdef => do let ncdef = forgetDef cdef
-                              setNamedCompiled n ncdef

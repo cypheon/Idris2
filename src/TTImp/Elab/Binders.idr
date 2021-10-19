@@ -10,6 +10,8 @@ import Core.Unify
 import Core.TT
 import Core.Value
 
+import Idris.Syntax
+
 import TTImp.Elab.Check
 import TTImp.Elab.Delayed
 import TTImp.TTImp
@@ -34,6 +36,7 @@ checkPiInfo : {vars : _} ->
               {auto m : Ref MD Metadata} ->
               {auto u : Ref UST UState} ->
               {auto e : Ref EST (EState vars)} ->
+              {auto s : Ref Syn SyntaxInfo} ->
               RigCount -> ElabInfo -> NestedNames vars -> Env Term vars ->
               PiInfo RawImp -> (expTy : Maybe (Glued vars)) ->
               Core (PiInfo (Term vars))
@@ -50,6 +53,7 @@ checkPi : {vars : _} ->
           {auto m : Ref MD Metadata} ->
           {auto u : Ref UST UState} ->
           {auto e : Ref EST (EState vars)} ->
+          {auto s : Ref Syn SyntaxInfo} ->
           RigCount -> ElabInfo ->
           NestedNames vars -> Env Term vars ->
           FC ->
@@ -89,6 +93,7 @@ inferLambda : {vars : _} ->
               {auto m : Ref MD Metadata} ->
               {auto u : Ref UST UState} ->
               {auto e : Ref EST (EState vars)} ->
+              {auto s : Ref Syn SyntaxInfo} ->
               RigCount -> ElabInfo ->
               NestedNames vars -> Env Term vars ->
               FC ->
@@ -130,6 +135,7 @@ checkLambda : {vars : _} ->
               {auto m : Ref MD Metadata} ->
               {auto u : Ref UST UState} ->
               {auto e : Ref EST (EState vars)} ->
+              {auto s : Ref Syn SyntaxInfo} ->
               RigCount -> ElabInfo ->
               NestedNames vars -> Env Term vars ->
               FC ->
@@ -174,7 +180,7 @@ checkLambda rig_in elabinfo nest env fc rigl info n argTy scope (Just expty_in)
                     -- We've already checked the argument and scope types,
                     -- so we just need to check multiplicities
                     when (rigb /= c) $
-                        throw (CantConvert fc env
+                        throw (CantConvert fc (gamma defs) env
                                   (Bind fc n (Pi fc' rigb info' tyv) !(getTerm scopet))
                                   (Bind fc bn (Pi fc' c info' pty) psc))
                     pure (Bind fc n (Lam fc' rigb info' tyv) scopev,
@@ -195,6 +201,7 @@ checkLet : {vars : _} ->
            {auto m : Ref MD Metadata} ->
            {auto u : Ref UST UState} ->
            {auto e : Ref EST (EState vars)} ->
+           {auto s : Ref Syn SyntaxInfo} ->
            RigCount -> ElabInfo ->
            NestedNames vars -> Env Term vars ->
            FC -> (lhsFC : FC) -> RigCount -> (n : Name) ->

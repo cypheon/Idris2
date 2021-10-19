@@ -49,7 +49,7 @@ jsString s = "'" ++ (concatMap okchar (unpack s)) ++ "'"
                             '"' => "\\\""
                             '\r' => "\\r"
                             '\n' => "\\n"
-                            other => "\\u{" ++ asHex (cast {to=Int} c) ++ "}"
+                            other => "\\u{" ++ asHex (cast c) ++ "}"
 
 ||| Alias for Text . jsString
 jsStringDoc : String -> Doc
@@ -69,7 +69,7 @@ jsIdent s = concatMap okchar (unpack s)
     okchar '_' = "_"
     okchar c = if isAlphaNum c
                   then cast c
-                  else "x" ++ the (String) (asHex (cast {to=Int} c))
+                  else "x" ++ asHex (cast c)
 
 keywordSafe : String -> String
 keywordSafe "var"    = "var$"
@@ -83,13 +83,17 @@ keywordSafe s = s
 --          JS Name
 --------------------------------------------------------------------------------
 
+jsUserName : UserName -> String
+jsUserName (Basic n) = keywordSafe $ jsIdent n
+jsUserName (Field n) = "rf__" ++ jsIdent n
+jsUserName Underscore = keywordSafe $ jsIdent "_"
+
 jsName : Name -> String
 jsName (NS ns n) = jsIdent (showNSWithSep "_" ns) ++ "_" ++ jsName n
-jsName (UN n) = keywordSafe $ jsIdent n
+jsName (UN n) = jsUserName n
 jsName (MN n i) = jsIdent n ++ "_" ++ show i
 jsName (PV n d) = "pat__" ++ jsName n
 jsName (DN _ n) = jsName n
-jsName (RF n) = "rf__" ++ jsIdent n
 jsName (Nested (i, x) n) = "n__" ++ show i ++ "_" ++ show x ++ "_" ++ jsName n
 jsName (CaseBlock x y) = "case__" ++ jsIdent x ++ "_" ++ show y
 jsName (WithBlock x y) = "with__" ++ jsIdent x ++ "_" ++ show y
@@ -107,8 +111,8 @@ mainExpr = MN "__mainExpression" 0
 
 var : Var -> Doc
 var (VName x) = jsNameDoc x
-var (VLoc x)  = Text $ "$" ++ asHex x
-var (VRef x)  = Text $ "$R" ++ asHex x
+var (VLoc x)  = Text $ "$" ++ asHex (cast x)
+var (VRef x)  = Text $ "$R" ++ asHex (cast x)
 
 minimal : Minimal -> Doc
 minimal (MVar v)          = var v
@@ -145,6 +149,7 @@ applyCon NOTHING _ [] = "{h" <+> softColon <+> "0}"
 applyCon CONS    _ as = applyObj (conTags as)
 applyCon JUST    _ as = applyObj (conTags as)
 applyCon RECORD  _ as = applyObj (conTags as)
+applyCon UNIT    _ [] = "undefined"
 applyCon _       t as = applyObj (("h" <+> softColon <+> tag2es t)::conTags as)
 
 -- applys the given list of arguments to the given function.
@@ -202,12 +207,15 @@ jsBigIntOfString = callFun1 (esName "bigIntOfString")
 -- call _parseFloat from the preamble, which
 -- converts a string to a `Number`
 jsNumberOfString : Doc -> Doc
-jsNumberOfString = callFun1 "parseFloat"
+jsNumberOfString = callFun1 (esName "numberOfString")
 
 -- convert an string to an integral type based
 -- on its `IntKind`.
 jsIntOfString : IntKind -> Doc -> Doc
-jsIntOfString k = if useBigInt k then jsBigIntOfString else jsNumberOfString
+jsIntOfString k =
+  if useBigInt k
+     then jsBigIntOfString
+     else callFun1 (esName "intOfString")
 
 -- introduce a binary infix operation
 binOp : (symbol : String) -> (lhs : Doc) -> (rhs : Doc) -> Doc
@@ -512,20 +520,33 @@ foreignDecl n ccs = do
 
 -- implementations for external primitive functions.
 jsPrim : {auto c : Ref ESs ESSt} -> Name -> List Doc -> Core Doc
-jsPrim (NS _ (UN "prim__newIORef")) [_,v,_] = pure $ hcat ["({value:", v, "})"]
-jsPrim (NS _ (UN "prim__readIORef")) [_,r,_] = pure $ hcat ["(", r, ".value)"]
-jsPrim (NS _ (UN "prim__writeIORef")) [_,r,v,_] = pure $ hcat ["(", r, ".value=", v, ")"]
-jsPrim (NS _ (UN "prim__newArray")) [_,s,v,_] = pure $ hcat ["(Array(", s, ").fill(", v, "))"]
-jsPrim (NS _ (UN "prim__arrayGet")) [_,x,p,_] = pure $ hcat ["(", x, "[", p, "])"]
-jsPrim (NS _ (UN "prim__arraySet")) [_,x,p,v,_] = pure $ hcat ["(", x, "[", p, "]=", v, ")"]
-jsPrim (NS _ (UN "prim__os")) [] = pure $ Text $ esName "sysos"
-jsPrim (NS _ (UN "void")) [_, _] = pure . jsCrashExp $ jsStringDoc "Error: Executed 'void'"
-jsPrim (NS _ (UN "prim__void")) [_, _] = pure . jsCrashExp $ jsStringDoc "Error: Executed 'void'"
-jsPrim (NS _ (UN "prim__codegen")) [] = do
+jsPrim nm docs = case (dropAllNS nm, docs) of
+  (UN (Basic "prim__newIORef"), [_,v,_]) => pure $ hcat ["({value:", v, "})"]
+  (UN (Basic "prim__readIORef"), [_,r,_]) => pure $ hcat ["(", r, ".value)"]
+  (UN (Basic "prim__writeIORef"), [_,r,v,_]) => pure $ hcat ["(", r, ".value=", v, ")"]
+  (UN (Basic "prim__newArray"), [_,s,v,_]) => pure $ hcat ["(Array(", s, ").fill(", v, "))"]
+  (UN (Basic "prim__arrayGet"), [_,x,p,_]) => pure $ hcat ["(", x, "[", p, "])"]
+  (UN (Basic "prim__arraySet"), [_,x,p,v,_]) => pure $ hcat ["(", x, "[", p, "]=", v, ")"]
+  (UN (Basic "void"), [_, _]) => pure . jsCrashExp $ jsStringDoc "Error: Executed 'void'"
+  (UN (Basic "prim__void"), [_, _]) => pure . jsCrashExp $ jsStringDoc "Error: Executed 'void'"
+  (UN (Basic "prim__codegen"), []) => do
     (cg :: _) <- ccTypes <$> get ESs
         | _ => pure "\"javascript\""
     pure . Text $ jsString cg
-jsPrim x args = throw $ InternalError $ "prim not implemented: " ++ (show x)
+
+-- fix #1839: Only support `prim__os` in Node backend but not in browsers
+  (UN (Basic "prim__os"), []) => do
+    tys <- ccTypes <$> get ESs
+    case searchForeign tys ["node"] of
+      Right _ => do
+        addToPreamble "prim__os" $
+          "const _sysos = ((o => o === 'linux'?'unix':o==='win32'?'windows':o)" ++
+          "(require('os').platform()));"
+        pure $ Text $ esName "sysos"
+      Left  _ =>
+        throw $ InternalError $ "prim not implemented: prim__os"
+
+  _ => throw $ InternalError $ "prim not implemented: " ++ show nm
 
 --------------------------------------------------------------------------------
 --          Codegen
@@ -627,6 +648,7 @@ mutual
         alt (MkEConAlt _ CONS b)    = ("undefined",) <$> stmt b
         alt (MkEConAlt _ NOTHING b) = ("0",) <$> stmt b
         alt (MkEConAlt _ JUST b)    = ("undefined",) <$> stmt b
+        alt (MkEConAlt _ UNIT b)    = ("undefined",) <$> stmt b
         alt (MkEConAlt t _ b)       = (tag2es t,) <$> stmt b
 
   stmt (ConstSwitch r sc alts def) = do
@@ -661,7 +683,14 @@ def (MkFunction n as body) = do
   args <- traverse registerLocal as
   mde  <- mode <$> get ESs
   b    <- stmt Returns body >>= stmt
-  pure $ printDoc mde $ function (var ref) (map var args) b
+  case args of
+    -- zero argument toplevel functions are converted to
+    -- lazily evaluated constants.
+    [] => pure $ printDoc mde $
+      constant (var ref) (
+        "__lazy(" <+> function neutral [] b <+> ")"
+      )
+    _  => pure $ printDoc mde $ function (var ref) (map var args) b
 
 -- generate code for the given foreign function definition
 foreign :  {auto c : Ref ESs ESSt}
@@ -674,7 +703,7 @@ foreign _                            = pure []
 -- name of the toplevel tail call loop from the
 -- preamble.
 tailRec : Name
-tailRec = UN "__tailRec"
+tailRec = UN $ Basic "__tailRec"
 
 ||| Compiles the given `ClosedTerm` for the list of supported
 ||| backends to JS code.

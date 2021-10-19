@@ -389,6 +389,26 @@ namespace List
   length []        = Z
   length (x :: xs) = S (length xs)
 
+  public export
+  reverseOnto : List a -> List a -> List a
+  reverseOnto acc [] = acc
+  reverseOnto acc (x::xs) = reverseOnto (x::acc) xs
+
+  public export
+  reverse : List a -> List a
+  reverse = reverseOnto []
+
+  ||| Tail-recursive append. Uses of (++) are automatically transformed to
+  ||| this. The only reason this is exported is that the proof of equivalence
+  ||| lives in a different module.
+  public export
+  tailRecAppend : (xs, ys : List a) -> List a
+  tailRecAppend xs ys = reverseOnto ys (reverse xs)
+
+  -- Always use tailRecAppend at runtime. Data.List.tailRecAppendIsAppend
+  -- proves these are equivalent.
+  %transform "tailRecAppend" (++) = tailRecAppend
+
 public export
 Functor List where
   map f [] = []
@@ -444,7 +464,7 @@ Traversable List where
 %foreign
   "scheme:string-concat"
   "RefC:fastConcat"
-  "javascript:lambda:(xs)=>''.concat(...__prim_idris2js_array(xs))"
+  "javascript:lambda:(xs)=>__prim_idris2js_array(xs).join('')"
 export
 fastConcat : List String -> String
 
@@ -572,7 +592,7 @@ pack (x :: xs) = strCons x (pack xs)
 %foreign
     "scheme:string-pack"
     "RefC:fastPack"
-    "javascript:lambda:(xs)=>''.concat(...__prim_idris2js_array(xs))"
+    "javascript:lambda:(xs)=>__prim_idris2js_array(xs).join('')"
 export
 fastPack : List Char -> String
 

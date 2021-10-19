@@ -24,8 +24,9 @@ data ConInfo = DATACON -- normal data constructor
              | NOTHING -- nothing of an option shaped thing
              | JUST -- just of an option shaped thing
              | RECORD -- record constructor (no tag)
-             | ZERO
-             | SUCC
+             | ZERO -- zero of a nat-like type
+             | SUCC -- successor of a nat-like type
+             | UNIT -- unit
 
 export
 Show ConInfo where
@@ -39,6 +40,7 @@ Show ConInfo where
   show RECORD  = "[record]"
   show ZERO    = "[zero]"
   show SUCC    = "[succ]"
+  show UNIT    = "[unit]"
 
 export
 Eq ConInfo where
@@ -52,6 +54,7 @@ Eq ConInfo where
   RECORD == RECORD = True
   ZERO == ZERO = True
   SUCC == SUCC = True
+  UNIT == UNIT = True
   _ == _ = False
 
 mutual
@@ -265,7 +268,7 @@ elem n [] = False
 elem n (x :: xs) = n == x || elem n xs
 
 tryNext : Name -> Name
-tryNext (UN n) = MN n 0
+tryNext (UN n) = MN (displayUserName n) 0
 tryNext (MN n i) = MN n (1 + i)
 tryNext n = MN (nameRoot n) 0
 

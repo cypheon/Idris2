@@ -11,6 +11,8 @@ import Core.TT
 import Core.UnifyState
 import Core.Value
 
+import Idris.Syntax
+
 import TTImp.BindImplicits
 import TTImp.Elab.Check
 import TTImp.Elab.Utils
@@ -32,11 +34,19 @@ getRetTy defs ty
     = throw (GenericMsg (getLoc ty)
              "Can only add hints for concrete return types")
 
+throwIfHasFlag : {auto c : Ref Ctxt Defs} -> FC -> Name -> DefFlag -> String -> Core ()
+throwIfHasFlag fc ndef fl msg
+    = when !(hasFlag fc ndef fl) $ throw (GenericMsg fc msg)
+
 processFnOpt : {auto c : Ref Ctxt Defs} ->
                FC -> Bool -> -- ^ top level name?
                Name -> FnOpt -> Core ()
 processFnOpt fc _ ndef Inline
-    = setFlag fc ndef Inline
+    = do throwIfHasFlag fc ndef NoInline "%noinline and %inline are mutually exclusive"
+         setFlag fc ndef Inline
+processFnOpt fc _ ndef NoInline
+    = do throwIfHasFlag fc ndef Inline "%inline and %noinline are mutually exclusive"
+         setFlag fc ndef NoInline
 processFnOpt fc _ ndef TCInline
     = setFlag fc ndef TCInline
 processFnOpt fc True ndef (Hint d)
@@ -91,7 +101,7 @@ processFnOpt fc _ ndef (SpecArgs ns)
                 then collectDDeps sc'
                 else do aty <- quote empty [] nty
                         -- Get names depended on by nty
-                        let deps = keys (getRefs (UN "_") aty)
+                        let deps = keys (getRefs (UN Underscore) aty)
                         rest <- collectDDeps sc'
                         pure (rest ++ deps)
     collectDDeps _ = pure []
@@ -181,10 +191,11 @@ processFnOpt fc _ ndef (SpecArgs ns)
 getFnString : {auto c : Ref Ctxt Defs} ->
               {auto m : Ref MD Metadata} ->
               {auto u : Ref UST UState} ->
+              {auto s : Ref Syn SyntaxInfo} ->
               RawImp -> Core String
 getFnString (IPrimVal _ (Str st)) = pure st
 getFnString tm
-    = do inidx <- resolveName (UN "[foreign]")
+    = do inidx <- resolveName (UN $ Basic "[foreign]")
          let fc = getFC tm
          let gstr = gnf [] (PrimVal fc StringType)
          etm <- checkTerm inidx InExpr [] (MkNested []) [] tm gstr
@@ -201,6 +212,7 @@ initDef : {vars : _} ->
           {auto c : Ref Ctxt Defs} ->
           {auto m : Ref MD Metadata} ->
           {auto u : Ref UST UState} ->
+          {auto s : Ref Syn SyntaxInfo} ->
           Name -> Env Term vars -> Term vars -> List FnOpt -> Core Def
 initDef n env ty []
     = do addUserHole False n
@@ -259,6 +271,7 @@ processType : {vars : _} ->
               {auto c : Ref Ctxt Defs} ->
               {auto m : Ref MD Metadata} ->
               {auto u : Ref UST UState} ->
+              {auto s : Ref Syn SyntaxInfo} ->
               List ElabOpt -> NestedNames vars -> Env Term vars ->
               FC -> RigCount -> Visibility ->
               List FnOpt -> ImpTy -> Core ()

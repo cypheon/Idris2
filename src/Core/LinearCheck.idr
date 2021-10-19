@@ -1,6 +1,6 @@
 module Core.LinearCheck
 
-import Core.CaseTree
+import Core.Case.CaseTree
 import Core.Context
 import Core.Context.Log
 import Core.Core
@@ -338,7 +338,7 @@ mutual
                         when (not !(convert defs env aty !(evalClosure defs ty))) $
                            do ty' <- quote defs env ty
                               aty' <- quote defs env aty
-                              throw (CantConvert fc env ty' aty')
+                              throw (CantConvert fc (gamma defs) env ty' aty')
                       pure (App fc f' aerased,
                             glueBack defs env sc',
                             fused ++ aused)
@@ -346,12 +346,12 @@ mutual
                       do Just _ <- lookupCtxtExact n (gamma defs)
                               | _ => undefinedName fc n
                          tfty <- getTerm gfty
-                         throw (GenericMsg fc ("Linearity checking failed on " ++ show f' ++
-                              " (" ++ show tfty ++ " not a function type)"))
+                         throw (GenericMsg fc ("Linearity checking failed on " ++ show !(toFullNames f') ++
+                              " (" ++ show !(toFullNames tfty) ++ " not a function type)"))
 
                 _ => do tfty <- getTerm gfty
-                        throw (GenericMsg fc ("Linearity checking failed on " ++ show f' ++
-                              " (" ++ show tfty ++ " not a function type)"))
+                        throw (GenericMsg fc ("Linearity checking failed on " ++ show !(toFullNames f') ++
+                              " (" ++ show !(toFullNames tfty) ++ " not a function type)"))
 
   lcheck rig erase env (As fc s as pat)
       = do (as', _, _) <- lcheck rig erase env as
@@ -671,7 +671,7 @@ mutual
            empty <- clearDefs defs
            ty <- quote empty env nty
            throw (GenericMsg fc ("Linearity checking failed on metavar "
-                      ++ show n ++ " (" ++ show ty
+                      ++ show !(toFullNames n) ++ " (" ++ show !(toFullNames ty)
                       ++ " not a function type)"))
   lcheckMeta rig erase env fc n idx [] chk nty
       = do defs <- get Ctxt

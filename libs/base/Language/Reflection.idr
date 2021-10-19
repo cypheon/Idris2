@@ -12,15 +12,32 @@ export
 data Elab : Type -> Type where
      Pure : a -> Elab a
      Bind : Elab a -> (a -> Elab b) -> Elab b
-     Fail : String -> Elab a
+     Fail : FC -> String -> Elab a
 
+     Try : Elab a -> Elab a -> Elab a
+
+     ||| Log a message. Takes a
+     ||| * topic
+     ||| * level
+     ||| * message
      LogMsg : String -> Nat -> String -> Elab ()
+     ||| Print and log a term. Takes a
+     ||| * topic
+     ||| * level
+     ||| * message
+     ||| * term
      LogTerm : String -> Nat -> String -> TTImp -> Elab ()
+     ||| Resugar, print and log a term. Takes a
+     ||| * topic
+     ||| * level
+     ||| * message
+     ||| * term
+     LogSugaredTerm : String -> Nat -> String -> TTImp -> Elab ()
 
      -- Elaborate a TTImp term to a concrete value
-     Check : {expected : Type} -> TTImp -> Elab expected
+     Check : TTImp -> Elab expected
      -- Quote a concrete expression back to a TTImp
-     Quote : val -> Elab TTImp
+     Quote : (0 _ : val) -> Elab TTImp
 
      -- Elaborate under a lambda
      Lambda : (0 x : Type) ->
@@ -63,7 +80,17 @@ Monad Elab where
 ||| Report an error in elaboration
 export
 fail : String -> Elab a
-fail = Fail
+fail = Fail EmptyFC
+
+export
+failAt : FC -> String -> Elab a
+failAt = Fail
+
+||| Try the first elaborator. If it fails, reset the elaborator state and
+||| run the second
+export
+try : Elab a -> Elab a -> Elab a
+try = Try
 
 ||| Write a log message, if the log level is >= the given level
 export
@@ -74,6 +101,11 @@ logMsg = LogMsg
 export
 logTerm : String -> Nat -> String -> TTImp -> Elab ()
 logTerm = LogTerm
+
+||| Write a log message and a resugared & rendered term, if the log level is >= the given level
+export
+logSugaredTerm : String -> Nat -> String -> TTImp -> Elab ()
+logSugaredTerm = LogSugaredTerm
 
 ||| Log the current goal type, if the log level is >= the given level
 export
@@ -87,12 +119,12 @@ logGoal str n msg
 ||| Check that some TTImp syntax has the expected type
 ||| Returns the type checked value
 export
-check : {expected : Type} -> TTImp -> Elab expected
+check : TTImp -> Elab expected
 check = Check
 
 ||| Return TTImp syntax of a given value
 export
-quote : val -> Elab TTImp
+quote : (0 _ : val) -> Elab TTImp
 quote = Quote
 
 ||| Build a lambda expression

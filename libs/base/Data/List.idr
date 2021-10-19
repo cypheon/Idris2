@@ -206,6 +206,31 @@ public export
 delete : Eq a => a -> List a -> List a
 delete = deleteBy (==)
 
+||| Delete the first occurrence of each element from the second list in the first
+||| list where equality is determined by the predicate passed as the first argument.
+||| @ p            A function that returns true when its two arguments should be considered equal.
+||| @ source       The list to delete elements from.
+||| @ undesirables The list of elements to delete.
+public export
+deleteFirstsBy : (p : a -> a -> Bool) -> (source : List a) -> (undesirables : List a) -> List a
+deleteFirstsBy p = foldl (flip (deleteBy p))
+
+infix 7 \\
+
+||| The non-associative list-difference.
+||| A specialized form of @deleteFirstsBy@ where the predicate is equality under the @Eq@
+||| interface.
+||| Deletes the first occurrence of each element of the second list from the first list.
+|||
+||| In the following example, the result is `[2, 4]`.
+||| ```idris example
+||| [1, 2, 3, 4] // [1, 3]
+||| ```
+|||
+public export
+(\\) : (Eq a) => List a -> List a -> List a
+(\\) = foldl (flip delete)
+
 ||| The unionBy function returns the union of two lists by user-supplied equality predicate.
 public export
 unionBy : (a -> a -> Bool) -> List a -> List a -> List a
@@ -320,15 +345,6 @@ replaceWhen p b l = map (\c => if p c then b else c) l
 public export
 replaceOn : Eq a => a -> a -> List a -> List a
 replaceOn a = replaceWhen (== a)
-
-public export
-reverseOnto : List a -> List a -> List a
-reverseOnto acc [] = acc
-reverseOnto acc (x::xs) = reverseOnto (x::acc) xs
-
-public export
-reverse : List a -> List a
-reverse = reverseOnto []
 
 ||| Construct a list with `n` copies of `x`.
 ||| @ n how many copies
@@ -714,6 +730,36 @@ consInjective : forall x, xs, y, ys .
                 the (List a) (x :: xs) = the (List b) (y :: ys) -> (x = y, xs = ys)
 consInjective Refl = (Refl, Refl)
 
+reverseReverseOnto : (l, r : List a) -> reverse (reverseOnto l r) = reverseOnto r l
+reverseReverseOnto _ [] = Refl
+reverseReverseOnto l (x :: xs) = reverseReverseOnto (x :: l) xs
+
+||| List reverse applied twice yields the identity function.
+export
+reverseInvolutive : (xs : List a) -> reverse (reverse xs) = xs
+reverseInvolutive = reverseReverseOnto []
+
+consReverse : (x : a) -> (l, r : List a) -> x :: reverseOnto r l = reverseOnto r (reverseOnto [x] (reverse l))
+consReverse _ [] _ = Refl
+consReverse x (y::ys) r
+  = rewrite consReverse x ys (y :: r) in
+      rewrite cong (reverseOnto r . reverse) $ consReverse x ys [y] in
+        rewrite reverseInvolutive (y :: reverseOnto [x] (reverse ys)) in
+          Refl
+
+consTailRecAppend : (x : a) -> (l, r : List a) -> tailRecAppend (x :: l) r = x :: (tailRecAppend l r)
+consTailRecAppend x l r
+  = rewrite consReverse x (reverse l) r in
+      rewrite reverseInvolutive l in
+        Refl
+
+||| Proof that `(++)` and `tailRecAppend` do the same thing, so the %transform
+||| directive is safe.
+tailRecAppendIsAppend : (xs, ys : List a) -> tailRecAppend xs ys = xs ++ ys
+tailRecAppendIsAppend [] ys = Refl
+tailRecAppendIsAppend (x::xs) ys =
+  trans (consTailRecAppend x xs ys) (cong (x ::) $ tailRecAppendIsAppend xs ys)
+
 ||| The empty list is a right identity for append.
 export
 appendNilRightNeutral : (l : List a) -> l ++ [] = l
@@ -742,14 +788,6 @@ revAppend (v :: vs) ns
           rewrite sym (revAppend vs ns) in
             rewrite appendAssociative (reverse ns) (reverse vs) [v] in
               Refl
-
-||| List reverse applied twice yields the identity function.
-export
-reverseInvolutive : (xs : List a) -> reverse (reverse xs) = xs
-reverseInvolutive [] = Refl
-reverseInvolutive (x :: xs) = rewrite revOnto [x] xs in
-                                rewrite sym (revAppend (reverse xs) [x]) in
-                                  cong (x ::) $ reverseInvolutive xs
 
 export
 dropFusion : (n, m : Nat) -> (l : List t) -> drop n (drop m l) = drop (n+m) l

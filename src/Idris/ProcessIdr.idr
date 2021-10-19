@@ -35,9 +35,11 @@ import Idris.REPL.Common
 import Idris.REPL.Opts
 import Idris.Syntax
 import Idris.Pretty
+import Idris.Doc.String
 
 import Data.List
 import Libraries.Data.NameMap
+import Libraries.Data.SortedMap
 import Libraries.Utils.Path
 
 import System
@@ -206,8 +208,12 @@ readHeader path origin
          -- Stop at the first :, that's definitely not part of the header, to
          -- save lexing the whole file unnecessarily
          setCurrentElabSource res -- for error printing purposes
-         let Right (decor, mod) = runParserTo (PhysicalIdrSrc origin) (isLitFile path) (is ':') res (progHdr (PhysicalIdrSrc origin))
+         let Right (ws, decor, mod)
+            = runParserTo (PhysicalIdrSrc origin)
+                          (isLitFile path) (is ':') res
+                          (progHdr (PhysicalIdrSrc origin))
             | Left err => throw err
+         traverse_ recordWarning ws
          pure mod
 
 %foreign "scheme:collect"
@@ -231,10 +237,12 @@ unchangedTime sourceFileName ttcFileName
 
 
 ||| If the source file hash hasn't changed
-unchangedHash : (hashFn : String) -> (sourceFileName : String) -> (ttcFileName : String) -> Core Bool
+unchangedHash : (hashFn : Maybe String) -> (sourceFileName : String) -> (ttcFileName : String) -> Core Bool
 unchangedHash hashFn sourceFileName ttcFileName
-  = do sourceCodeHash        <- hashFileWith hashFn sourceFileName
-       (storedSourceHash, _) <- readHashes ttcFileName
+  = do Just sourceCodeHash        <- hashFileWith hashFn sourceFileName
+             | _ => pure False
+       (Just storedSourceHash, _) <- readHashes ttcFileName
+             | _ => pure False
        pure $ sourceCodeHash == storedSourceHash
 
 export
@@ -310,9 +318,22 @@ processMod sourceFileName ttcFileName msg sourcecode origin
                    pure Nothing
            else -- needs rebuilding
              do iputStrLn msg
-                Right (decor, mod) <- logTime ("++ Parsing " ++ sourceFileName) $
-                            pure (runParser (PhysicalIdrSrc origin) (isLitFile sourceFileName) sourcecode (do p <- prog (PhysicalIdrSrc origin); eoi; pure p))
-                      | Left err => pure (Just [err])
+                Right (ws, decor, mod) <-
+                    logTime ("++ Parsing " ++ sourceFileName) $
+                      pure $ runParser (PhysicalIdrSrc origin)
+                                       (isLitFile sourceFileName)
+                                       sourcecode
+                                       (do p <- prog (PhysicalIdrSrc origin); eoi; pure p)
+                  | Left err => pure (Just [err])
+                traverse_ recordWarning ws
+                -- save the doc string for the current module
+                log "doc.module" 10 $ unlines
+                  [ "Recording doc"
+                  , documentation mod
+                  , "for module " ++ show (moduleNS mod)
+                  ]
+                addModDocString (moduleNS mod) (documentation mod)
+
                 addSemanticDecorations decor
                 initHash
                 traverse_ addPublicHash (sort importMetas)
@@ -374,7 +395,6 @@ process buildmsg sourceFileName ident
                         do defs <- get Ctxt
                            ns <- ctxtPathToNS sourceFileName
                            makeBuildDirectory ns
-
                            traverse_
                               (\cg =>
                                   do Just cgdata <- getCG cg

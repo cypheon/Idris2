@@ -1,6 +1,6 @@
 module TTImp.Elab.Term
 
-import Libraries.Data.StringMap
+import Libraries.Data.UserNameMap
 
 import Core.Context
 import Core.Core
@@ -12,6 +12,8 @@ import Core.Reflect
 import Core.Unify
 import Core.TT
 import Core.Value
+
+import Idris.Syntax
 
 import TTImp.Elab.Ambiguity
 import TTImp.Elab.App
@@ -118,6 +120,7 @@ checkTerm : {vars : _} ->
             {auto m : Ref MD Metadata} ->
             {auto u : Ref UST UState} ->
             {auto e : Ref EST (EState vars)} ->
+            {auto s : Ref Syn SyntaxInfo} ->
             RigCount -> ElabInfo ->
             NestedNames vars -> Env Term vars -> RawImp -> Maybe (Glued vars) ->
             Core (Term vars, Glued vars)
@@ -133,7 +136,7 @@ checkTerm rig elabinfo nest env (IPi fc r p Nothing argTy retTy) exp
                    AutoImplicit => genVarName "conArg"
                    (DefImplicit _) => genVarName "defArg"
          checkPi rig elabinfo nest env fc r p n argTy retTy exp
-checkTerm rig elabinfo nest env (IPi fc r p (Just (UN "_")) argTy retTy) exp
+checkTerm rig elabinfo nest env (IPi fc r p (Just (UN Underscore)) argTy retTy) exp
     = checkTerm rig elabinfo nest env (IPi fc r p Nothing argTy retTy) exp
 checkTerm rig elabinfo nest env (IPi fc r p (Just n) argTy retTy) exp
     = checkPi rig elabinfo nest env fc r p n argTy retTy exp
@@ -182,7 +185,7 @@ checkTerm rig elabinfo nest env (ICoerced fc tm) exp
 checkTerm rig elabinfo nest env (IBindHere fc binder sc) exp
     = checkBindHere rig elabinfo nest env fc binder sc exp
 checkTerm rig elabinfo nest env (IBindVar fc n) exp
-    = checkBindVar rig elabinfo nest env fc n exp
+    = checkBindVar rig elabinfo nest env fc (Basic n) exp
 checkTerm rig elabinfo nest env (IAs fc nameFC side n_in tm) exp
     = checkAs rig elabinfo nest env fc nameFC side n_in tm exp
 checkTerm rig elabinfo nest env (IMustUnify fc reason tm) exp
@@ -210,12 +213,13 @@ checkTerm rig elabinfo nest env (IType fc) exp
     = checkExp rig elabinfo env fc (TType fc) (gType fc) exp
 
 checkTerm rig elabinfo nest env (IHole fc str) exp
-    = checkHole rig elabinfo nest env fc str exp
+    = checkHole rig elabinfo nest env fc (Basic str) exp
 checkTerm rig elabinfo nest env (IUnifyLog fc lvl tm) exp
     = withLogLevel lvl $ check rig elabinfo nest env tm exp
 checkTerm rig elabinfo nest env (Implicit fc b) (Just gexpty)
     = do nm <- genName "_"
          expty <- getTerm gexpty
+         defs <- get Ctxt
          metaval <- metaVar fc rig env nm expty
          -- Add to 'bindIfUnsolved' if 'b' set
          when (b && bindingVars elabinfo) $
@@ -249,7 +253,7 @@ checkTerm rig elabinfo nest env (IWithUnambigNames fc ns rhs) exp
 
          pure result
   where
-    resolveNames : FC -> List Name -> Core (StringMap (Name, Int, GlobalDef))
+    resolveNames : FC -> List Name -> Core (UserNameMap (Name, Int, GlobalDef))
     resolveNames fc [] = pure empty
     resolveNames fc (n :: ns) =
       case userNameRoot n of

@@ -2,6 +2,46 @@
 
 ## [Next version]
 
+### REPL changes
+
+* New experimental Scheme based evaluator (only available if compiled via
+  Chez scheme or Racket). To access this at the REPL, set the evaluator mode to
+  the scheme based evaluator with `:set eval scheme`.
+* New option `evaltiming` to time how long an evaluation takes at the REPL,
+  set with `:set evaltiming`.
+
+### Language changes
+
+* Interpolated strings now make use of `concat` which is compiled into `fastConcat`
+  The interpolated slices now make use of the `Interpolation` interface available
+  in the prelude. It has only one method `interpolate` which is called for every
+  expression that appears within an interpolation slice.
+
+  ```idris
+  "hello \{world}"
+  ```
+
+  is desugared into
+
+  ```idris
+  concat [interpolate "hello ", interpolate world]
+  ```
+
+  This allows you to write expressions within slices without having to call `show`
+  but for this you need to implement the `Interpolation` interface for each type
+  that you intend to use within an interpolation slice. The reason for not reusing
+  `Show` is that `Interpolation` and `Show` have conflicting semantics, typically
+  this is the case for `String` which adds double quotes around the string.
+
+### Library changes
+
+#### Contrib
+
+* `System.Random` support for `Int` changed to `Int32`; it already limited itself
+  to 32 bits but now that is codified. Javascript backends are now supported.
+
+## v0.5.0/0.5.1
+
 ### Language changes
 
 * Missing methods in implementations now give a compile time error. This was
@@ -11,16 +51,39 @@
   `where` clauses
 * The syntax for Name reflection has changed, and now requires a single brace
   instead of a double brace, e.g. `` `{x} ``
-* Raw string literals allows to write string while customising the escape
+* Raw string literals allows writing string while customising the escape
   sequence. Start a string with `#"` in order to change the escape characters
   to `\#`, close the string with `"#`. Remains compatible with multiline
   string literals.
-* Interpolated strings allows to insert expressions within string literals
+* Interpolated strings allows inserting expressions within string literals
   and avoid writing concatenation explicitly. Escape a left curly brace `\{`
   to start an interpolation slice and close it with a right curly brace `}` to
   resume writing the string literal. The enclosed expression must be of type
   `String`. Interpolated strings are compatible with raw strings (the slices
   need to be escaped with `\#{` instead) and multiline strings.
+* We now support ellipses (written `_`) on the left hand side of a `with`
+  clause. Ellipses are substituted for by the left hand side of the parent
+  clause i.e.
+
+```idris
+  filter : (p : a -> Bool) -> List a -> List a
+  filter p []        = []
+  filter p (x :: xs) with (p x)
+    _ | True  = x :: filter p xs
+    _ | False = filter p xs
+```
+
+means
+
+```idris
+filter : (p : a -> Bool) -> List a -> List a
+filter p []        = []
+filter p (x :: xs) with (p x)
+  filter p (x :: xs) | True  = x :: filter p xs
+  filter p (x :: xs) | False = filter p xs
+```
+
+
 
 ### Compiler changes
 
@@ -32,17 +95,24 @@
   and reverts to whole program compilation. Incremental compilation is currently
   supported only by the Chez Scheme back end.
   This is currently supported only on Unix-like platforms (not yet Windows)
+  - Note that you must set `IDRIS2_INC_CGS` when building and installing
+    all libraries you plan to link with an incremental build.
+  - Note also that this is experimental and not yet well tested!
 * The type checker now tries a lot harder to avoid reducing expressions where
-  it is not needed. This gives a huge performance improvement in programs
+  it is not needed. This can give a huge performance improvement in programs
   that potentially do a lot of compile time evaluation. However, sometimes
   reducing expressions can help in totality and quantity checking, so this may
   cause some programs not to type check which previously did - in these cases,
   you will need to give the reduced expressions explicitly.
 
-### Library Changes
+### REPL/CLI/IDE mode changes
+
+* Added `--list-packages` CLI option.
+* Added `--total` CLI option.
+
+### Library changes
 
 #### Prelude
-
 
 Changed
 
@@ -68,6 +138,12 @@ Changed
   system of interfaces. These interfaces defines properties of binary
   relations (functions of type `ty -> ty -> Type`), and orders are
   defined simply as bundles of these properties.
+
+### Installation changes
+
+* Added a new makefile target to install Idris 2 library documentation.  After `make install`, type
+  `make install-libdocs` to install it.  After that, the index file can be found here: ``idris2
+  --libdir`/docs/index.html`.``
 
 ## v0.4.0
 

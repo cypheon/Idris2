@@ -11,7 +11,7 @@ module TTImp.Interactive.ExprSearch
 -- depth.
 
 import Core.AutoSearch
-import Core.CaseTree
+import Core.Case.CaseTree
 import Core.Context
 import Core.Context.Log
 import Core.Env
@@ -19,13 +19,16 @@ import Core.LinearCheck
 import Core.Metadata
 import Core.Normalise
 import Core.Options
-import Core.Unify
 import Core.TT
+import Core.Unify
 import Core.Value
+
+import Idris.Syntax
 
 import TTImp.Elab.Check
 import TTImp.Interactive.CaseSplit
 import TTImp.TTImp
+import TTImp.TTImp.Functor
 import TTImp.Unelab
 import TTImp.Utils
 
@@ -363,7 +366,7 @@ getSuccessful {vars} fc rig opts mkHole env ty topty all
                                             (\r => nameRoot (recname r) ++ "_rhs")
                                             (recData opts)
                            hn <- uniqueName defs (map nameRoot vars) base
-                           (idx, tm) <- newMeta fc rig env (UN hn) ty
+                           (idx, tm) <- newMeta fc rig env (UN $ Basic hn) ty
                                                 (Hole (length env) (holeInit False))
                                                 False
                            one (tm, [])
@@ -738,7 +741,7 @@ searchType {vars} fc rig opts env topty Z (Bind bfc n b@(Pi fc' c info ty) sc)
       getSuccessful fc rig opts False env ty topty
            [searchLocal fc rig opts env (Bind bfc n b sc) topty,
             (do defs <- get Ctxt
-                let n' = UN !(getArgName defs n [] vars !(nf defs env ty))
+                let n' = UN $ Basic !(getArgName defs n [] vars !(nf defs env ty))
                 let env' : Env Term (n' :: _) = b :: env
                 let sc' = renameTop n' sc
                 log "interaction.search" 10 $ "Introduced lambda, search for " ++ show sc'
@@ -851,6 +854,7 @@ getLHSData defs (Just tm)
 firstLinearOK : {auto c : Ref Ctxt Defs} ->
                 {auto m : Ref MD Metadata} ->
                 {auto u : Ref UST UState} ->
+                {auto s : Ref Syn SyntaxInfo} ->
                 FC -> Search (ClosedTerm, ExprDefs) ->
                 Core (Search RawImp)
 firstLinearOK fc NoMore = noResult
@@ -862,7 +866,7 @@ firstLinearOK fc (Result (t, ds) next)
                 defs <- get Ctxt
                 nft <- normaliseHoles defs [] t
                 raw <- unelab [] !(toFullNames nft)
-                pure (Result raw (firstLinearOK fc !next)))
+                pure (Result (map rawName raw) (firstLinearOK fc !next)))
             (\err =>
                 do next' <- next
                    firstLinearOK fc next')
@@ -871,6 +875,7 @@ export
 exprSearchOpts : {auto c : Ref Ctxt Defs} ->
                  {auto m : Ref MD Metadata} ->
                  {auto u : Ref UST UState} ->
+                 {auto s : Ref Syn SyntaxInfo} ->
                  SearchOpts -> FC -> Name -> List Name ->
                  Core (Search RawImp)
 exprSearchOpts opts fc n_in hints
@@ -882,7 +887,7 @@ exprSearchOpts opts fc n_in hints
          let Hole _ _ = definition gdef
              | PMDef pi [] (STerm _ tm) _ _
                  => do raw <- unelab [] !(toFullNames !(normaliseHoles defs [] tm))
-                       one raw
+                       one (map rawName raw)
              | _ => throw (GenericMsg fc "Name is already defined")
          lhs <- findHoleLHS !(getFullName (Resolved idx))
          log "interaction.search" 10 $ "LHS hole data " ++ show (n, lhs)
@@ -904,6 +909,7 @@ exprSearchOpts opts fc n_in hints
 exprSearch' : {auto c : Ref Ctxt Defs} ->
               {auto m : Ref MD Metadata} ->
               {auto u : Ref UST UState} ->
+              {auto s : Ref Syn SyntaxInfo} ->
               FC -> Name -> List Name ->
               Core (Search RawImp)
 exprSearch' = exprSearchOpts (initSearchOpts True 5)
@@ -912,6 +918,7 @@ export
 exprSearch : {auto c : Ref Ctxt Defs} ->
              {auto m : Ref MD Metadata} ->
              {auto u : Ref UST UState} ->
+             {auto s : Ref Syn SyntaxInfo} ->
              FC -> Name -> List Name ->
              Core (Search RawImp)
 exprSearch fc n hints
@@ -924,6 +931,7 @@ export
 exprSearchN : {auto c : Ref Ctxt Defs} ->
               {auto m : Ref MD Metadata} ->
               {auto u : Ref UST UState} ->
+              {auto s : Ref Syn SyntaxInfo} ->
               FC -> Nat -> Name -> List Name ->
               Core (List RawImp)
 exprSearchN fc max n hints

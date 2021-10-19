@@ -1,6 +1,6 @@
 module TTImp.PartialEval
 
-import Core.CaseTree
+import Core.Case.CaseTree
 import Core.Context
 import Core.Context.Log
 import Core.Core
@@ -11,8 +11,11 @@ import Core.Normalise
 import Core.Value
 import Core.UnifyState
 
+import Idris.Syntax
+
 import TTImp.Elab.Check
 import TTImp.TTImp
+import TTImp.TTImp.Functor
 import TTImp.Unelab
 
 import Libraries.Utils.Hex
@@ -141,25 +144,25 @@ getSpecPats fc pename fn stk fnty args sargs pats
     mkRHSargs (NBind _ x (Pi _ _ Explicit _) sc) app (a :: as) ((_, Dynamic) :: ds)
         = do defs <- get Ctxt
              sc' <- sc defs (toClosure defaultOpts [] (Erased fc False))
-             mkRHSargs sc' (IApp fc app (IVar fc (UN a))) as ds
+             mkRHSargs sc' (IApp fc app (IVar fc (UN $ Basic a))) as ds
     mkRHSargs (NBind _ x (Pi _ _ _ _) sc) app (a :: as) ((_, Dynamic) :: ds)
         = do defs <- get Ctxt
              sc' <- sc defs (toClosure defaultOpts [] (Erased fc False))
-             mkRHSargs sc' (INamedApp fc app x (IVar fc (UN a))) as ds
+             mkRHSargs sc' (INamedApp fc app x (IVar fc (UN $ Basic a))) as ds
     mkRHSargs (NBind _ x (Pi _ _ Explicit _) sc) app as ((_, Static tm) :: ds)
         = do defs <- get Ctxt
              sc' <- sc defs (toClosure defaultOpts [] (Erased fc False))
              tm' <- unelabNoSugar [] tm
-             mkRHSargs sc' (IApp fc app tm') as ds
+             mkRHSargs sc' (IApp fc app (map rawName tm')) as ds
     mkRHSargs (NBind _ x (Pi _ _ _ _) sc) app as ((_, Static tm) :: ds)
         = do defs <- get Ctxt
              sc' <- sc defs (toClosure defaultOpts [] (Erased fc False))
              tm' <- unelabNoSugar [] tm
-             mkRHSargs sc' (INamedApp fc app x tm') as ds
+             mkRHSargs sc' (INamedApp fc app x (map rawName tm')) as ds
     -- Type will depend on the value here (we assume a variadic function) but
     -- the argument names are still needed
     mkRHSargs ty app (a :: as) ((_, Dynamic) :: ds)
-        = mkRHSargs ty (IApp fc app (IVar fc (UN a))) as ds
+        = mkRHSargs ty (IApp fc app (IVar fc (UN $ Basic a))) as ds
     mkRHSargs _ app _ _
         = pure app
 
@@ -182,17 +185,17 @@ getSpecPats fc pename fn stk fnty args sargs pats
                 Core ImpClause
     unelabPat pename (_ ** (env, lhs, rhs))
         = do lhsapp <- unelabNoSugar env lhs
-             let lhs' = dropArgs pename lhsapp
+             let lhs' = dropArgs pename (map rawName lhsapp)
              defs <- get Ctxt
              rhsnf <- normaliseArgHoles defs env rhs
              rhs' <- unelabNoSugar env rhsnf
-             pure (PatClause fc lhs' rhs')
+             pure (PatClause fc lhs' (map rawName rhs'))
 
     unelabLHS : Name -> (vs ** (Env Term vs, Term vs, Term vs)) ->
                 Core RawImp
     unelabLHS pename (_ ** (env, lhs, rhs))
         = do lhsapp <- unelabNoSugar env lhs
-             pure $ dropArgs pename lhsapp
+             pure $ dropArgs pename (map rawName lhsapp)
 
 -- Get the reducible names in a function to be partially evaluated. In practice,
 -- that's all the functions it refers to
@@ -215,6 +218,7 @@ getReducible (n :: rest) refs defs
 mkSpecDef : {auto c : Ref Ctxt Defs} ->
             {auto m : Ref MD Metadata} ->
             {auto u : Ref UST UState} ->
+            {auto s : Ref Syn SyntaxInfo} ->
             FC -> GlobalDef ->
             Name -> List (Nat, ArgMode) -> Name -> List (FC, Term vars) ->
             Core (Term vars)
@@ -292,7 +296,7 @@ mkSpecDef {vars} fc gdef pename sargs fn stk
     getAllRefs : NameMap Bool -> List ArgMode -> NameMap Bool
     getAllRefs ns (Dynamic :: xs) = getAllRefs ns xs
     getAllRefs ns (Static t :: xs)
-        = addRefs False (UN "_") (getAllRefs ns xs) t
+        = addRefs False (UN Underscore) (getAllRefs ns xs) t
     getAllRefs ns [] = ns
 
     updateApp : Name -> RawImp -> RawImp
@@ -308,7 +312,7 @@ mkSpecDef {vars} fc gdef pename sargs fn stk
              defs <- get Ctxt
              rhsnf <- normaliseArgHoles defs env rhs
              rhs' <- unelabNoSugar env rhsnf
-             pure (PatClause fc lhs' rhs')
+             pure (PatClause fc (map rawName lhs') (map rawName rhs'))
 
     showPat : ImpClause -> String
     showPat (PatClause _ lhs rhs) = show lhs ++ " = " ++ show rhs
@@ -348,6 +352,7 @@ specialise : {vars : _} ->
              {auto c : Ref Ctxt Defs} ->
              {auto m : Ref MD Metadata} ->
              {auto u : Ref UST UState} ->
+             {auto s : Ref Syn SyntaxInfo} ->
              FC -> Env Term vars -> GlobalDef ->
              Name -> List (FC, Term vars) ->
              Core (Maybe (Term vars))
@@ -363,7 +368,7 @@ specialise {vars} fc env gdef fn stk
                let nhash = hash (mapMaybe getStatic (map snd sargs))
                               `hashWithSalt` fn -- add function name to hash to avoid namespace clashes
                let pename = NS partialEvalNS
-                            (UN ("PE_" ++ nameRoot fnfull ++ "_" ++ asHex nhash))
+                            (UN $ Basic ("PE_" ++ nameRoot fnfull ++ "_" ++ asHex (cast nhash)))
                defs <- get Ctxt
                case lookup pename (peFailures defs) of
                     Nothing => Just <$> mkSpecDef fc gdef pename sargs fn stk
@@ -396,6 +401,7 @@ findSpecs : {vars : _} ->
             {auto c : Ref Ctxt Defs} ->
             {auto m : Ref MD Metadata} ->
             {auto u : Ref UST UState} ->
+            {auto s : Ref Syn SyntaxInfo} ->
             Env Term vars -> List (FC, Term vars) -> Term vars ->
             Core (Term vars)
 findSpecs env stk (Ref fc Func fn)
@@ -444,6 +450,7 @@ mutual
               {auto c : Ref Ctxt Defs} ->
               {auto m : Ref MD Metadata} ->
               {auto u : Ref UST UState} ->
+              {auto s : Ref Syn SyntaxInfo} ->
               Ref QVar Int -> Defs -> Bounds bound ->
               Env Term free -> List (Closure free) ->
               Core (List (Term (bound ++ free)))
@@ -455,6 +462,7 @@ mutual
   quoteArgsWithFC : {auto c : Ref Ctxt Defs} ->
                     {auto m : Ref MD Metadata} ->
                     {auto u : Ref UST UState} ->
+                    {auto s : Ref Syn SyntaxInfo} ->
                     {bound, free : _} ->
                     Ref QVar Int -> Defs -> Bounds bound ->
                     Env Term free -> List (FC, Closure free) ->
@@ -466,6 +474,7 @@ mutual
               {auto c : Ref Ctxt Defs} ->
               {auto m : Ref MD Metadata} ->
               {auto u : Ref UST UState} ->
+              {auto s : Ref Syn SyntaxInfo} ->
               Ref QVar Int -> Defs ->
               FC -> Bounds bound -> Env Term free -> NHead free ->
               Core (Term (bound ++ free))
@@ -504,6 +513,7 @@ mutual
             {auto c : Ref Ctxt Defs} ->
             {auto m : Ref MD Metadata} ->
             {auto u : Ref UST UState} ->
+            {auto s : Ref Syn SyntaxInfo} ->
             Ref QVar Int -> Defs -> Bounds bound ->
             Env Term free -> PiInfo (Closure free) ->
             Core (PiInfo (Term (bound ++ free)))
@@ -518,6 +528,7 @@ mutual
                 {auto c : Ref Ctxt Defs} ->
                 {auto m : Ref MD Metadata} ->
                 {auto u : Ref UST UState} ->
+                {auto s : Ref Syn SyntaxInfo} ->
                 Ref QVar Int -> Defs -> Bounds bound ->
                 Env Term free -> Binder (Closure free) ->
                 Core (Binder (Term (bound ++ free)))
@@ -549,6 +560,7 @@ mutual
                {auto c : Ref Ctxt Defs} ->
                {auto m : Ref MD Metadata} ->
                {auto u : Ref UST UState} ->
+               {auto s : Ref Syn SyntaxInfo} ->
                Ref QVar Int ->
                Defs -> Bounds bound ->
                Env Term vars -> NF vars -> Core (Term (bound ++ vars))
@@ -629,6 +641,7 @@ evalRHS : {vars : _} ->
           {auto c : Ref Ctxt Defs} ->
           {auto m : Ref MD Metadata} ->
           {auto u : Ref UST UState} ->
+          {auto s : Ref Syn SyntaxInfo} ->
           Env Term vars -> NF vars -> Core (Term vars)
 evalRHS env nf
     = do q <- newRef QVar 0
@@ -640,6 +653,7 @@ applySpecialise : {vars : _} ->
                   {auto c : Ref Ctxt Defs} ->
                   {auto m : Ref MD Metadata} ->
                   {auto u : Ref UST UState} ->
+                  {auto s : Ref Syn SyntaxInfo} ->
                   Env Term vars ->
                   Maybe (List (Name, Nat)) ->
                         -- ^ If we're specialising, names to reduce in the RHS

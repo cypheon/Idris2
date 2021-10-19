@@ -11,6 +11,8 @@ import Core.Unify
 import Core.TT
 import Core.Value
 
+import Idris.Syntax
+
 import TTImp.Elab.Check
 import TTImp.Elab.Delayed
 import TTImp.TTImp
@@ -18,7 +20,7 @@ import TTImp.TTImp
 import Data.List
 import Data.String
 
-import Libraries.Data.StringMap
+import Libraries.Data.UserNameMap
 
 %default covering
 
@@ -31,7 +33,7 @@ expandAmbigName : {vars : _} ->
                   RawImp -> Maybe (Glued vars) -> Core RawImp
 expandAmbigName (InLHS _) nest env orig args (IBindVar fc n) exp
     = do est <- get EST
-         if UN n `elem` lhsPatVars est
+         if UN (Basic n) `elem` lhsPatVars est
             then pure $ IMustUnify fc NonLinearVar orig
             else pure $ orig
 expandAmbigName mode nest env orig args (IVar fc x) exp
@@ -68,7 +70,7 @@ expandAmbigName mode nest env orig args (IVar fc x) exp
                                                       (uniqType primNs x args)
                                                       (map (mkAlt primApp est) nalts)
   where
-    lookupUN : Maybe String -> StringMap a -> Maybe a
+    lookupUN : Maybe UserName -> UserNameMap a -> Maybe a
     lookupUN Nothing _ = Nothing
     lookupUN (Just n) sm = lookup n sm
 
@@ -103,11 +105,6 @@ expandAmbigName mode nest env orig args (IVar fc x) exp
         = buildAlt (IAutoApp fc' f a) as
     buildAlt f ((fc', Just (Just i), a) :: as)
         = buildAlt (INamedApp fc' f i a) as
-
-    isPrimName : List Name -> Name -> Bool
-    isPrimName [] fn = False
-    isPrimName (p :: ps) fn
-        = dropNS fn == p || isPrimName ps fn
 
     -- If it's not a constructor application, dot it
     wrapDot : Bool -> EState vars ->
@@ -340,6 +337,7 @@ checkAlternative : {vars : _} ->
                    {auto m : Ref MD Metadata} ->
                    {auto u : Ref UST UState} ->
                    {auto e : Ref EST (EState vars)} ->
+                   {auto s : Ref Syn SyntaxInfo} ->
                    RigCount -> ElabInfo ->
                    NestedNames vars -> Env Term vars ->
                    FC -> AltType -> List RawImp -> Maybe (Glued vars) ->

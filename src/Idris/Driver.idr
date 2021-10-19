@@ -112,10 +112,6 @@ showInfo : {auto c : Ref Ctxt Defs}
         -> List CLOpt
         -> Core Bool
 showInfo Nil = pure False
-showInfo (BlodwenPaths :: _)
-    = do defs <- get Ctxt
-         iputStrLn $ pretty (toString (dirs (options defs)))
-         pure True
 showInfo (_::rest) = showInfo rest
 
 tryYaffle : List CLOpt -> Core Bool
@@ -169,7 +165,7 @@ stMain cgs opts
 
          let ide = ideMode opts
          let ideSocket = ideModeSocket opts
-         let outmode = if ide then IDEMode 0 stdin stdout else REPL False
+         let outmode = if ide then IDEMode 0 stdin stdout else REPL InfoLvl
          let fname = findInput opts
          o <- newRef ROpts (REPL.Opts.defaultOpts fname outmode cgs)
          updateEnv
@@ -184,7 +180,7 @@ stMain cgs opts
                      | False => pure ()
 
                  when (checkVerbose opts) $ -- override Quiet if implicitly set
-                     setOutput (REPL False)
+                     setOutput (REPL InfoLvl)
                  u <- newRef UST initUState
                  origin <- maybe
                    (pure $ Virtual Interactive) (\fname => do
@@ -268,9 +264,6 @@ quitOpts (Help (Just HelpLogging) :: _)
          pure False
 quitOpts (Help (Just HelpPragma) :: _)
     = do putStrLn pragmaTopics
-         pure False
-quitOpts (ShowPrefix :: _)
-    = do putStrLn yprefix
          pure False
 quitOpts (_ :: opts) = quitOpts opts
 
