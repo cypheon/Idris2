@@ -333,7 +333,8 @@ toCExpTm n (Ref fc _ fn)
              -- ^ For readability of output code, and the Nat hack,
          pure $ CApp fc (CRef fc full) []
 toCExpTm n (Meta fc mn i args)
-    = pure $ CApp fc (CRef fc mn) !(traverse (toCExp n) args)
+    = pure $ CCrash fc ("Compiling meta " ++ show (fc, mn, i, args))
+
 toCExpTm n (Bind fc x (Lam _ _ _ _) sc)
     = pure $ CLam fc x !(toCExp n sc)
 toCExpTm n (Bind fc x (Let _ rig val _) sc)
